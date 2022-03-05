@@ -22,16 +22,6 @@ func (hub *HeartHub) Heartbeat(key string) error {
 	}
 }
 
-func (hub *HeartHub) sendEvent(event *Event) {
-	select {
-	case hub.eventCh <- event:
-		return
-	default:
-		eventJsonBytes, _ := json.Marshal(event)
-		hub.logger.Err(fmt.Sprintf("error: event buffer is full, miss event: %s", string(eventJsonBytes)))
-	}
-}
-
 func (hub *HeartHub) startHandleHeartbeat() {
 	go func() {
 		for {
@@ -123,4 +113,14 @@ func (hub *HeartHub) startHealthCheck() {
 			}
 		}
 	}()
+}
+
+func (hub *HeartHub) sendEvent(event *Event) {
+	select {
+	case hub.eventCh <- event:
+		return
+	default:
+		eventJsonBytes, _ := json.Marshal(event)
+		hub.logger.Err(fmt.Sprintf("error: event buffer is full, miss event: %s", string(eventJsonBytes)))
+	}
 }

@@ -13,9 +13,8 @@ type HeartHub struct {
 	ctx         context.Context
 	ctxCancelFn func()
 
-	healthCheckingInterval time.Duration
-	heartbeatTimeout       time.Duration
-	onceMaxPopCount        int
+	heartbeatTimeout time.Duration
+	onceMaxPopCount  int
 
 	hearts sync.Map // string->*Heart
 	cond   *sync.Cond
@@ -58,9 +57,8 @@ func NewHeartHub(options ...HeartHubOption) *HeartHub {
 		ctx:         context.Background(),
 		ctxCancelFn: nil,
 
-		healthCheckingInterval: time.Second * 1,
-		heartbeatTimeout:       time.Second * 5,
-		onceMaxPopCount:        20,
+		heartbeatTimeout: time.Second * 5,
+		onceMaxPopCount:  20,
 
 		hearts: sync.Map{},
 		cond:   sync.NewCond(&sync.Mutex{}),
@@ -108,34 +106,4 @@ func (hub *HeartHub) getHeart(key string) *heart {
 func (hub *HeartHub) Close() {
 	hub.ctxCancelFn()
 	hub.cond.Broadcast()
-}
-
-type HeartHubOption func(hub *HeartHub)
-
-// WithTimeoutOption can set timeout to the heartshub.
-func WithTimeoutOption(timeout time.Duration) HeartHubOption {
-	return func(hub *HeartHub) {
-		hub.heartbeatTimeout = timeout
-	}
-}
-
-// WithHealthCheckingIntervalOption can set health checking interval to the heartshub.
-func WithHealthCheckingIntervalOption(interval time.Duration) HeartHubOption {
-	return func(hub *HeartHub) {
-		hub.healthCheckingInterval = interval
-	}
-}
-
-// WithContextOption can set context to the heartshub.
-func WithContextOption(ctx context.Context) HeartHubOption {
-	return func(hub *HeartHub) {
-		hub.ctx = ctx
-	}
-}
-
-// WithLoggerOption can set logger to the heartshub.
-func WithLoggerOption(logger Logger) HeartHubOption {
-	return func(hub *HeartHub) {
-		hub.logger = logger
-	}
 }
