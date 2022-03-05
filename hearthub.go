@@ -1,118 +1,113 @@
 package heartfelt
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 )
 
 type HeartHub struct {
-	HeartbeatTimeout         time.Duration
-	HeartbeatTimeoutCallback func(string)
-	logger                   log.Logger
+	logger      Logger
+	ctx         context.Context
+	ctxCancelFn func()
 
-	Hearts sync.Map // string->*Heart
+	healthCheckingInterval time.Duration
+	heartbeatTimeout       time.Duration
+	onceMaxPopCount        int
 
-	LinkMutex sync.Mutex
-	HeadBeat  *Beat
-	TailBeat  *Beat
+	hearts sync.Map // string->*Heart
+	cond   *sync.Cond
+
+	headBeat *beat
+	tailBeat *beat
+
+	heartbeatCh chan *heart
+	eventCh     chan *Event
 }
 
-type Heart struct {
+type heart struct {
 	Key      string
-	LastBeat *Beat
+	LastBeat *beat
 }
 
-type Beat struct {
-	Heart *Heart
+type beat struct {
+	Heart *heart
 	Time  time.Time
 
-	Prev *Beat
-	Next *Beat
+	Prev *beat
+	Next *beat
+}
+
+type Event struct {
+	HeartKey  string    `json:"heart_key"`
+	EventName string    `json:"event_name"`
+	BeatTime  time.Time `json:"beat_time"`
 }
 
 var ErrHeartKeyExist error = errors.New("heartbeat: HeartKeyExistErr")
 
 var ErrHeartKeyNoExist error = errors.New("heartbeat: HeartKeyNoExistErr")
 
+var ErrHubClosed error = errors.New("heartbeat: ErrHubClosed")
+
 func NewHeartHub(options ...HeartHubOption) *HeartHub {
-	hub := &HeartHub{
-		logger:           *log.Default(),
-		HeartbeatTimeout: time.Second * 5,
-		Hearts:           sync.Map{},
+	hearthub := &HeartHub{
+		logger:      newDefaultLogger(),
+		ctx:         context.Background(),
+		ctxCancelFn: nil,
+
+		healthCheckingInterval: time.Second * 1,
+		heartbeatTimeout:       time.Second * 5,
+		onceMaxPopCount:        20,
+
+		hearts: sync.Map{},
+		cond:   sync.NewCond(&sync.Mutex{}),
+
+		headBeat: nil,
+		tailBeat: nil,
+
+		heartbeatCh: make(chan *heart, 100),
+		eventCh:     make(chan *Event, 100),
 	}
 
 	for _, option := range options {
-		option(hub)
+		option(hearthub)
 	}
 
-	if hub.HeartbeatTimeoutCallback == nil {
-		hub.HeartbeatTimeoutCallback = func(key string) {
-			hub.logger.Printf("%s is timeout\n", key)
-		}
-	}
+	hearthub.ctx, hearthub.ctxCancelFn = context.WithCancel(hearthub.ctx)
 
-	return hub
+	// start goroutines
+	hearthub.startHealthCheck()
+	hearthub.startHandleHeartbeat()
+
+	return hearthub
 }
 
-func (hub *HeartHub) getHeart(key string) *Heart {
-	// TODO: 2 level shard
-	if heart, ok := hub.Hearts.Load(key); ok {
-		return heart.(*Heart)
+func (hub *HeartHub) AddHeart(key string) error {
+	if _, ok := hub.hearts.LoadOrStore(key, &heart{key, nil}); ok {
+		return fmt.Errorf("%w: %s", ErrHeartKeyExist, key)
+	}
+	return nil
+}
+
+func (hub *HeartHub) GetEventChannel() <-chan *Event {
+	return hub.eventCh
+}
+
+func (hub *HeartHub) getHeart(key string) *heart {
+	// TODO: add 2 level shard
+	if h, ok := hub.hearts.Load(key); ok {
+		return h.(*heart)
 	} else {
 		return nil
 	}
 }
 
-func (hub *HeartHub) NewHeart(key string) error {
-	if _, ok := hub.Hearts.LoadOrStore(key, &Heart{key, nil}); ok {
-		return fmt.Errorf("new: %s: %w", key, ErrHeartKeyExist)
-	}
-	return nil
-}
-
-func (hub *HeartHub) Heartbeat(key string) error {
-	var heart *Heart
-	if heart = hub.getHeart(key); heart == nil {
-		return fmt.Errorf("new: %s: %w", key, ErrHeartKeyNoExist)
-	}
-
-	// TODO: can be beaten by a channel
-	hub.LinkMutex.Lock()
-	defer hub.LinkMutex.Unlock()
-
-	lastBeat := heart.LastBeat
-	currentBeat := &Beat{Heart: heart, Time: time.Now()} // TODO: beat can be in a pool
-
-	// remove old beat from link
-	if lastBeat != nil {
-		hub.HeadBeat = lastBeat.Next
-
-		if hub.HeadBeat == lastBeat { // it is the head
-			hub.HeadBeat = lastBeat.Next
-		} else {
-			lastBeat.Prev.Next = lastBeat.Next
-		}
-
-		if hub.TailBeat == lastBeat { // it is the tail
-			hub.TailBeat = lastBeat.Prev
-		} else {
-			lastBeat.Next.Prev = lastBeat.Prev
-		}
-	}
-
-	// push current beat to tail of the link
-	if hub.TailBeat == nil { // the link is empty
-		hub.TailBeat, hub.HeadBeat = currentBeat, currentBeat
-	} else { // add current beat to the tail
-		currentBeat.Prev = hub.TailBeat
-		hub.TailBeat.Next = currentBeat
-		hub.TailBeat = currentBeat
-	}
-
-	return nil
+func (hub *HeartHub) Close() {
+	hub.ctxCancelFn()
+	hub.cond.Broadcast()
 }
 
 type HeartHubOption func(hub *HeartHub)
@@ -120,19 +115,26 @@ type HeartHubOption func(hub *HeartHub)
 // WithTimeoutOption can set timeout to the heartshub.
 func WithTimeoutOption(timeout time.Duration) HeartHubOption {
 	return func(hub *HeartHub) {
-		hub.HeartbeatTimeout = timeout
+		hub.heartbeatTimeout = timeout
 	}
 }
 
-// WithTimeoutCallbackOption can set timeout callback function to the heartshub.
-func WithTimeoutCallbackOption(callback func(string)) HeartHubOption {
+// WithHealthCheckingIntervalOption can set health checking interval to the heartshub.
+func WithHealthCheckingIntervalOption(interval time.Duration) HeartHubOption {
 	return func(hub *HeartHub) {
-		hub.HeartbeatTimeoutCallback = callback
+		hub.healthCheckingInterval = interval
+	}
+}
+
+// WithContextOption can set context to the heartshub.
+func WithContextOption(ctx context.Context) HeartHubOption {
+	return func(hub *HeartHub) {
+		hub.ctx = ctx
 	}
 }
 
 // WithLoggerOption can set logger to the heartshub.
-func WithLoggerOption(logger log.Logger) HeartHubOption {
+func WithLoggerOption(logger Logger) HeartHubOption {
 	return func(hub *HeartHub) {
 		hub.logger = logger
 	}
