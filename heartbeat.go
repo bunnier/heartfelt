@@ -7,6 +7,7 @@ import (
 )
 
 const EventTimeout = "TIME_OUT"
+const EventHeartBeat = "HEART_BEAT"
 
 func (hub *HeartHub) Heartbeat(key string) error {
 	var heart *heart
@@ -14,10 +15,13 @@ func (hub *HeartHub) Heartbeat(key string) error {
 		return fmt.Errorf("%w: %s", ErrHeartKeyNoExist, key)
 	}
 
+	now := time.Now()
+
 	select {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	case hub.heartbeatCh <- heart:
+		hub.sendEvent(EventHeartBeat, key, now, now)
 		return nil
 	}
 }
@@ -90,14 +94,9 @@ func (hub *HeartHub) startHealthCheck() {
 					break
 				}
 
-				hub.sendEvent(&Event{
-					HeartKey:  hub.headBeat.Heart.Key,
-					EventName: EventTimeout,
-					BeatTime:  hub.headBeat.Time,
-				})
+				hub.sendEvent(EventTimeout, hub.headBeat.Heart.Key, hub.headBeat.Time, time.Now())
 
 				hub.headBeat = hub.headBeat.Next
-
 				if popCount = popCount + 1; popCount >= hub.onceMaxPopCount {
 					break
 				}
@@ -115,12 +114,24 @@ func (hub *HeartHub) startHealthCheck() {
 	}()
 }
 
-func (hub *HeartHub) sendEvent(event *Event) {
+func (hub *HeartHub) sendEvent(eventName string, heartKey string, beatTime time.Time, eventTime time.Time) bool {
+	if _, ok := hub.watchEvents[eventName]; !ok {
+		return false
+	}
+
+	event := &Event{
+		EventName: eventName,
+		HeartKey:  heartKey,
+		BeatTime:  beatTime,
+		EventTime: eventTime,
+	}
+
 	select {
 	case hub.eventCh <- event:
-		return
+		return true
 	default:
 		eventJsonBytes, _ := json.Marshal(event)
 		hub.logger.Err(fmt.Sprintf("error: event buffer is full, miss event: %s", string(eventJsonBytes)))
+		return false
 	}
 }

@@ -24,6 +24,7 @@ type HeartHub struct {
 
 	heartbeatCh chan *heart
 	eventCh     chan *Event
+	watchEvents map[string]struct{}
 }
 
 type heart struct {
@@ -40,9 +41,10 @@ type beat struct {
 }
 
 type Event struct {
-	HeartKey  string    `json:"heart_key"`
 	EventName string    `json:"event_name"`
+	HeartKey  string    `json:"heart_key"`
 	BeatTime  time.Time `json:"beat_time"`
+	EventTime time.Time `json:"event_time"`
 }
 
 var ErrHeartKeyExist error = errors.New("heartbeat: HeartKeyExistErr")
@@ -68,6 +70,9 @@ func NewHeartHub(options ...HeartHubOption) *HeartHub {
 
 		heartbeatCh: make(chan *heart, 100),
 		eventCh:     make(chan *Event, 100),
+		watchEvents: map[string]struct{}{
+			EventTimeout: {},
+		},
 	}
 
 	for _, option := range options {
