@@ -1,26 +1,34 @@
 package heartfelt
 
-import "log"
+import (
+	"log"
+	"os"
+)
 
 type Logger interface {
-	Info(string)
-	Err(string)
+	Info(v ...interface{})
+	Err(v ...interface{})
 }
 
 var _ Logger = new(defaultLogger)
 
 type defaultLogger struct {
-	logger *log.Logger
+	infoLogger *log.Logger
+	errLogger  *log.Logger
 }
 
 func newDefaultLogger() *defaultLogger {
-	return &defaultLogger{log.Default()}
+	flag := log.LstdFlags | log.Lmsgprefix
+	return &defaultLogger{
+		infoLogger: log.New(os.Stderr, "[INFO]", flag),
+		errLogger:  log.New(os.Stderr, "[ERROR]", flag),
+	}
 }
 
-func (l defaultLogger) Info(msg string) {
-	l.logger.Println(msg)
+func (l defaultLogger) Info(v ...interface{}) {
+	l.infoLogger.Println(v...)
 }
 
-func (l defaultLogger) Err(msg string) {
-	l.logger.Println(msg)
+func (l defaultLogger) Err(v ...interface{}) {
+	l.errLogger.Println(v...)
 }

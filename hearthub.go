@@ -4,34 +4,39 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"hash/fnv"
 	"sync"
 	"time"
 )
 
-// HeartHub is the center of this module.
+// HeartHub is the api entrance of this package.
 type HeartHub struct {
 	logger      Logger
 	ctx         context.Context
 	ctxCancelFn func()
 
-	timeout          time.Duration
-	onceMaxPopCount  int
-	beatChBufferSize int
+	// In extreme cases, it may have large number of timeout heartbeats.
+	// For avoid the timeout handle goroutine occupy much time,
+	// we use batchPopThreshold to control maximum number of a batch.
+	batchPopThreshold int
+	beatChBufferSize  int
+	timeout           time.Duration
 
-	eventCh          chan *Event
 	subscribedEvents map[string]struct{}
+	eventCh          chan *Event
 
-	partitions []*heartHubPartition
+	// More parallelisms mean more parallel capability.
+	// A heartHubParallelism manage a part of hearts which are handled in same goroutines group.
+	parallelisms []*heartHubParallelism
 }
 
-// heartHubPartition manage a part of hearts.
-type heartHubPartition struct {
+// heartHubParallelism manage a part of hearts which are handled in same goroutines group.
+type heartHubParallelism struct {
+	id       int
 	heartHub *HeartHub
 
-	hearts   sync.Map   // hearts map, key=> heart.key, value => heart
-	beatLink beatLink   // all of alive(no timeout) heartbeats in this partition.
+	hearts   sync.Map   // hearts map, key => heart.key, value => heart
+	beatLink beatLink   // all of alive(no timeout) heartbeats in this heartHubParallelism.
 	cond     *sync.Cond // condition & mutex for doing modify
 
 	beatCh chan string // for receive heartbeats
@@ -44,7 +49,7 @@ type heart struct {
 }
 
 // beatLink is a doubly linked list,
-// store all of alive(no timeout) heartbeats in one partition by time sequences.
+// store all of alive(no timeout) heartbeats in one heartHubParallelism by time sequences.
 type beatLink struct {
 	headBeat *beat
 	tailBeat *beat
@@ -67,22 +72,22 @@ var beatsPool sync.Pool = sync.Pool{
 }
 
 // After HeartHub be closed, heartbeat method will return this error.
-var ErrHubClosed error = errors.New("heartbeat: ErrHubClosed")
+var ErrHubClosed error = errors.New("heartbeat: this HeartHub has been closed")
 
-// NewHeartHub will make a HeartHub.
+// NewHeartHub will make a HeartHub which is the api entrance of this package.
 func NewHeartHub(options ...HeartHubOption) *HeartHub {
 	hub := &HeartHub{
-		logger:           newDefaultLogger(),
-		ctx:              nil,
-		ctxCancelFn:      nil,
-		timeout:          time.Second * 30,
-		onceMaxPopCount:  10,
-		beatChBufferSize: 100,
-		eventCh:          nil,
+		logger:            newDefaultLogger(),
+		ctx:               nil,
+		ctxCancelFn:       nil,
+		batchPopThreshold: 100,
+		beatChBufferSize:  100,
+		timeout:           time.Second * 30,
 		subscribedEvents: map[string]struct{}{
 			EventTimeout: {},
 		},
-		partitions: nil,
+		eventCh:      nil,
+		parallelisms: nil,
 	}
 
 	for _, option := range options {
@@ -95,29 +100,36 @@ func NewHeartHub(options ...HeartHubOption) *HeartHub {
 		hub.eventCh = make(chan *Event, 100)
 	}
 
-	if hub.partitions == nil {
-		hub.partitions = make([]*heartHubPartition, 0, 1)
+	if hub.parallelisms == nil {
+		hub.parallelisms = make([]*heartHubParallelism, 0, 1)
 	}
 
-	for i := 0; i < cap(hub.partitions); i++ {
-		p := newHeartHubPartition(hub)
-		hub.partitions = append(hub.partitions, p)
-		p.startHealthCheck()
-		p.startHandleHeartbeat()
+	for i := 1; i <= cap(hub.parallelisms); i++ {
+		parallelism := newHeartHubParallelism(i, hub)
+		hub.parallelisms = append(hub.parallelisms, parallelism)
+		parallelism.startHealthCheck()
+		parallelism.startHandleHeartbeat()
 	}
 
 	return hub
 }
 
+func (hub *HeartHub) getParallelism(key string) *heartHubParallelism {
+	fnv := fnv.New32a()
+	fnv.Write([]byte(key))
+	parallelismNum := int(fnv.Sum32()) % len(hub.parallelisms)
+	return hub.parallelisms[parallelismNum]
+}
+
 // Heartbeat will beat the heart of specified key.
 func (hub *HeartHub) Heartbeat(key string) error {
-	partition := hub.getPartition(key)
+	parallelism := hub.getParallelism(key)
 
 	select {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		partition.heartbeat(key)
+		parallelism.heartbeat(key)
 		now := time.Now()
 		hub.sendEvent(EventHeartBeat, key, now, now)
 		return nil
@@ -127,8 +139,8 @@ func (hub *HeartHub) Heartbeat(key string) error {
 // Close will release goroutines.
 func (hub *HeartHub) Close() {
 	hub.ctxCancelFn()
-	for _, partition := range hub.partitions {
-		partition.wakeup()
+	for _, parallelism := range hub.parallelisms {
+		parallelism.wakeup()
 	}
 }
 
@@ -136,6 +148,11 @@ func (hub *HeartHub) Close() {
 func (hub *HeartHub) GetEventChannel() <-chan *Event {
 	return hub.eventCh
 }
+
+const (
+	EventTimeout   = "TIME_OUT"   // EventTimeout event will trigger when a heart meet timeout
+	EventHeartBeat = "HEART_BEAT" // EventHeartBeat event will trigger when a heart receive a heartbeat.
+)
 
 type Event struct {
 	EventName string    `json:"event_name"`
@@ -161,14 +178,7 @@ func (hub *HeartHub) sendEvent(eventName string, heartKey string, beatTime time.
 		return true
 	default:
 		eventJsonBytes, _ := json.Marshal(event)
-		hub.logger.Err(fmt.Sprintf("error: event buffer is full, miss event: %s", string(eventJsonBytes)))
+		hub.logger.Err("event channel buffer is full, missed event:", string(eventJsonBytes))
 		return false
 	}
-}
-
-func (hub *HeartHub) getPartition(key string) *heartHubPartition {
-	fnv := fnv.New32a()
-	fnv.Write([]byte(key))
-	partitionNum := int(fnv.Sum32()) % len(hub.partitions)
-	return hub.partitions[partitionNum]
 }

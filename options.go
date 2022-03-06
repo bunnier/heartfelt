@@ -30,10 +30,10 @@ func WithSubscribeEventNamesOption(eventNames ...string) HeartHubOption {
 	}
 }
 
-// WithPartitionNumOption can set event buffer size.
-func WithPartitionNumOption(partitionNum int) HeartHubOption {
+// WithDegreeOfParallelismOption can control degree of parallelism.
+func WithDegreeOfParallelismOption(degree int) HeartHubOption {
 	return func(hub *HeartHub) {
-		hub.partitions = make([]*heartHubPartition, 0, partitionNum)
+		hub.parallelisms = make([]*heartHubParallelism, 0, degree)
 	}
 }
 
