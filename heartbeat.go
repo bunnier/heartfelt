@@ -10,17 +10,13 @@ const EventTimeout = "TIME_OUT"
 const EventHeartBeat = "HEART_BEAT"
 
 func (hub *HeartHub) Heartbeat(key string) error {
-	var heart *heart
-	if heart = hub.getHeart(key); heart == nil {
-		return fmt.Errorf("%w: %s", ErrHeartKeyNoExist, key)
-	}
-
-	now := time.Now()
+	heart := hub.getHeart(key)
 
 	select {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	case hub.heartbeatCh <- heart:
+		now := time.Now()
 		hub.sendEvent(EventHeartBeat, key, now, now)
 		return nil
 	}

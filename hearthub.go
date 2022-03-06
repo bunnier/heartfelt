@@ -3,7 +3,6 @@ package heartfelt
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -86,27 +85,56 @@ func NewHeartHub(options ...HeartHubOption) *HeartHub {
 	return hearthub
 }
 
-func (hub *HeartHub) AddHeart(key string) error {
-	if _, ok := hub.hearts.LoadOrStore(key, &heart{key, nil}); ok {
-		return fmt.Errorf("%w: %s", ErrHeartKeyExist, key)
+func (hub *HeartHub) getHeart(key string) *heart {
+	// TODO 2 level shard
+	var h *heart
+	if hi, ok := hub.hearts.Load(key); ok {
+		h = hi.(*heart)
+	} else {
+		hi, _ = hub.hearts.LoadOrStore(key, &heart{key, nil})
+		h = hi.(*heart)
 	}
-	return nil
+	return h
 }
 
 func (hub *HeartHub) GetEventChannel() <-chan *Event {
 	return hub.eventCh
 }
 
-func (hub *HeartHub) getHeart(key string) *heart {
-	// TODO: add 2 level shard
-	if h, ok := hub.hearts.Load(key); ok {
-		return h.(*heart)
-	} else {
-		return nil
-	}
-}
-
 func (hub *HeartHub) Close() {
 	hub.ctxCancelFn()
 	hub.cond.Broadcast()
+}
+
+type HeartHubOption func(hub *HeartHub)
+
+// WithTimeoutOption can set timeout to the hearthub.
+func WithTimeoutOption(timeout time.Duration) HeartHubOption {
+	return func(hub *HeartHub) {
+		hub.heartbeatTimeout = timeout
+	}
+}
+
+// WithContextOption can set context to the hearthub.
+func WithContextOption(ctx context.Context) HeartHubOption {
+	return func(hub *HeartHub) {
+		hub.ctx = ctx
+	}
+}
+
+// WithLoggerOption can set logger to the hearthub.
+func WithLoggerOption(logger Logger) HeartHubOption {
+	return func(hub *HeartHub) {
+		hub.logger = logger
+	}
+}
+
+// WithLoggerOption can set watch events to hearthub.
+func WithWatchEventOption(eventNames ...string) HeartHubOption {
+	return func(hub *HeartHub) {
+		hub.watchEvents = map[string]struct{}{}
+		for _, eventName := range eventNames {
+			hub.watchEvents[eventName] = struct{}{}
+		}
+	}
 }
