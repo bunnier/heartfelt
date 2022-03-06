@@ -45,10 +45,6 @@ type Event struct {
 	EventTime time.Time `json:"event_time"`
 }
 
-var ErrHeartKeyExist error = errors.New("heartbeat: HeartKeyExistErr")
-
-var ErrHeartKeyNoExist error = errors.New("heartbeat: HeartKeyNoExistErr")
-
 var ErrHubClosed error = errors.New("heartbeat: ErrHubClosed")
 
 func NewHeartHub(options ...HeartHubOption) *HeartHub {
@@ -57,16 +53,16 @@ func NewHeartHub(options ...HeartHubOption) *HeartHub {
 		ctx:         context.Background(),
 		ctxCancelFn: nil,
 
-		heartbeatTimeout: time.Second * 5,
-		onceMaxPopCount:  20,
+		heartbeatTimeout: time.Second * 30,
+		onceMaxPopCount:  10,
 
 		hearts: sync.Map{},
 		cond:   sync.NewCond(&sync.Mutex{}),
 
 		beatLink: beatLink{},
 
-		heartbeatCh: make(chan *heart, 100),
-		eventCh:     make(chan *Event, 100),
+		heartbeatCh: nil,
+		eventCh:     nil,
 		watchEvents: map[string]struct{}{
 			EventTimeout: {},
 		},
@@ -77,6 +73,14 @@ func NewHeartHub(options ...HeartHubOption) *HeartHub {
 	}
 
 	hearthub.ctx, hearthub.ctxCancelFn = context.WithCancel(hearthub.ctx)
+
+	if hearthub.eventCh == nil {
+		hearthub.eventCh = make(chan *Event, 100)
+	}
+
+	if hearthub.heartbeatCh == nil {
+		hearthub.heartbeatCh = make(chan *heart, 100)
+	}
 
 	// start goroutines
 	hearthub.startHealthCheck()
@@ -99,6 +103,19 @@ func (hub *HeartHub) getHeart(key string) *heart {
 
 func (hub *HeartHub) GetEventChannel() <-chan *Event {
 	return hub.eventCh
+}
+
+func (hub *HeartHub) Heartbeat(key string) error {
+	heart := hub.getHeart(key)
+
+	select {
+	case <-hub.ctx.Done():
+		return ErrHubClosed
+	case hub.heartbeatCh <- heart:
+		now := time.Now()
+		hub.sendEvent(EventHeartBeat, key, now, now)
+		return nil
+	}
 }
 
 func (hub *HeartHub) Close() {
@@ -136,5 +153,19 @@ func WithWatchEventOption(eventNames ...string) HeartHubOption {
 		for _, eventName := range eventNames {
 			hub.watchEvents[eventName] = struct{}{}
 		}
+	}
+}
+
+// WithEventBufferSizeOption can set event buffer size.
+func WithEventBufferSizeOption(bufferSize int) HeartHubOption {
+	return func(hub *HeartHub) {
+		hub.eventCh = make(chan *Event, bufferSize)
+	}
+}
+
+// WithHeartbeatBufferSizeOption can set heartbeat buffer size.
+func WithHeartbeatBufferSizeOption(bufferSize int) HeartHubOption {
+	return func(hub *HeartHub) {
+		hub.heartbeatCh = make(chan *heart, bufferSize)
 	}
 }
