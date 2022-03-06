@@ -12,18 +12,24 @@ import (
 func main() {
 	// HeartHub is the api entrance of this package.
 	heartHub := heartfelt.NewHeartHub(
-		heartfelt.WithDegreeOfParallelismOption(4),
-		heartfelt.WithTimeoutOption(time.Millisecond*200),
+		heartfelt.WithDegreeOfParallelismOption(2),
+		heartfelt.WithTimeoutOption(time.Second),
 	)
+	eventCh := heartHub.GetEventChannel() // Events will be sent to this channel later.
 
-	eventCh := heartHub.GetEventChannel() // Event will be sent to this channel.
-	ctx, _ := context.WithTimeout(context.Background(), time.Second*15)
-	go startFakeServices(ctx, heartHub) // Start fake service..
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15) // exit context
+	defer cancel()
+
+	// startFakeServices will start 10000 fake services, each service make heartbeat in 200ms regularly.
+	// But these services: index in {67, 120, 100, 3456, 4000, 5221, 7899, 9999} will stop work after {its_id} ms.
+	// Fortunately, heartHub will catch them all ^_^
+	go startFakeServices(ctx, heartHub, 10000, []int{67, 120, 100, 3456, 4000, 5221, 7899, 9999})
 
 	for {
 		select {
 		case event := <-eventCh:
-			log.Default().Printf("receive a event: heartKey=%s\n eventName=%s", event.HeartKey, event.EventName)
+			log.Default().Printf("received an event: heartKey=%s eventName=%s, lastBeatTime=%d, eventTime=%d, findTime=%d",
+				event.HeartKey, event.EventName, event.BeatTime.UnixMilli(), event.EventTime.UnixMilli(), event.EventTime.UnixMilli()-event.BeatTime.UnixMilli())
 		case <-ctx.Done():
 			heartHub.Close()
 			return
@@ -31,40 +37,31 @@ func main() {
 	}
 }
 
-// startFakeServices will start 10000 fake services, each service make heartbeat in 100ms regularly.
-// But these services: id in {67, 120, 100, 3456, 4000, 5221, 7899, 9999} will stop work after {its_id} ms.
-// Sure, heartHub will find them all ^_^
-func startFakeServices(ctx context.Context, heartHub *heartfelt.HeartHub) {
-	stuckIds := map[int]struct{}{
-		67:   {},
-		120:  {},
-		100:  {},
-		3456: {},
-		4000: {},
-		5221: {},
-		7899: {},
-		9999: {},
+// startFakeServices will start fake services.
+func startFakeServices(ctx context.Context, heartHub *heartfelt.HeartHub, serviceNum int, stuckIds []int) {
+	// These ids will stuck later.
+	stuckIdsMap := make(map[int]struct{})
+	for _, v := range stuckIds {
+		stuckIdsMap[v] = struct{}{}
 	}
 
-	for i := 0; i < 10000; i++ {
-		i := i
+	for i := 1; i <= serviceNum; i++ {
 		ctx := ctx
-
-		_, isStuckId := stuckIds[i]
-		if isStuckId {
+		if _, ok := stuckIdsMap[i]; ok {
 			ctx, _ = context.WithTimeout(ctx, time.Duration(i)*time.Millisecond)
 		}
 
+		// Each goroutine below represents a service.
+		key := strconv.Itoa(i) // convert index to the service key
 		go func() {
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				default:
-					heartHub.Heartbeat(strconv.Itoa(i))
+					heartHub.Heartbeat(key) // send heartbeat..
+					time.Sleep(500 * time.Millisecond)
 				}
-
-				time.Sleep(100 * time.Millisecond)
 			}
 		}()
 	}

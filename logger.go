@@ -1,34 +1,32 @@
 package heartfelt
 
 import (
+	"fmt"
 	"log"
-	"os"
 )
 
+// Logger is a logger.
 type Logger interface {
 	Info(v ...interface{})
-	Err(v ...interface{})
+	Error(v ...interface{})
 }
 
 var _ Logger = new(defaultLogger)
 
 type defaultLogger struct {
-	infoLogger *log.Logger
-	errLogger  *log.Logger
+	logger *log.Logger
 }
 
 func newDefaultLogger() *defaultLogger {
-	flag := log.LstdFlags | log.Lmsgprefix
 	return &defaultLogger{
-		infoLogger: log.New(os.Stderr, "[INFO]", flag),
-		errLogger:  log.New(os.Stderr, "[ERROR]", flag),
+		logger: log.Default(),
 	}
 }
 
 func (l defaultLogger) Info(v ...interface{}) {
-	l.infoLogger.Println(v...)
+	l.logger.Println("[INFO]", fmt.Sprint(v...))
 }
 
-func (l defaultLogger) Err(v ...interface{}) {
-	l.errLogger.Println(v...)
+func (l defaultLogger) Error(v ...interface{}) {
+	l.logger.Println("[ERROR]", fmt.Sprint(v...))
 }

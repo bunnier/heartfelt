@@ -1,7 +1,7 @@
 package heartfelt
 
-// beatsLink is a doubly linked list,
-// store all of alive(no timeout) heartbeats in one heartHubParallelism by time sequences.
+// beatsLink is a doubly linked list.
+// It stores all of alive(no timeout) heartbeats in one heartHubParallelism by time sequences.
 type beatsLink struct {
 	headBeat *beat
 	tailBeat *beat
@@ -14,40 +14,45 @@ func (link *beatsLink) remove(b *beat) bool {
 	}
 
 	if b == link.headBeat {
-		link.headBeat = b.Next
+		link.headBeat = b.next
 	} else {
-		b.Prev.Next = b.Next
+		b.prev.next = b.next
 	}
 
 	if b == link.tailBeat {
-		link.tailBeat = b.Prev
+		link.tailBeat = b.prev
 	} else {
-		b.Next.Prev = b.Prev
+		b.next.prev = b.prev
 	}
+
+	b.prev = nil
+	b.next = nil
 
 	return true
 }
 
 // push a beat to tail of the link.
-func (link *beatsLink) push(b *beat) {
-	if link.tailBeat == nil { // So the link must be empty.
-		link.tailBeat, link.headBeat = b, b
-	} else { // Add current beat to the tail.
-		b.Prev = link.tailBeat
-		b.Prev.Next = b
+func (link *beatsLink) push(b *beat) bool {
+	if b == nil {
+		return false
+	}
+
+	if link.tailBeat == nil {
+		link.headBeat, link.tailBeat = b, b
+	} else {
+		link.tailBeat.next = b
+		b.prev = link.tailBeat
 		link.tailBeat = b
 	}
+
+	return true
 }
 
 // pop a beat from head of the link.
 func (link *beatsLink) pop() *beat {
-	if link.headBeat == nil {
-		return nil
-	}
-
-	h := link.headBeat
-	link.headBeat = link.headBeat.Next
-	return h
+	b := link.headBeat
+	link.remove(b)
+	return b
 }
 
 // peek the head of the link.

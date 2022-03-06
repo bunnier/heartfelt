@@ -12,6 +12,8 @@ import (
 // HeartHub is the api entrance of this package.
 type HeartHub struct {
 	logger      Logger
+	verboseInfo bool
+
 	ctx         context.Context
 	ctxCancelFn func()
 
@@ -26,17 +28,17 @@ type HeartHub struct {
 	eventCh          chan *Event
 
 	// More parallelisms mean more parallel capability.
-	// A heartHubParallelism manage a part of hearts which are handled in same goroutines group.
+	// A heartHubParallelism manages a part of hearts which are handled in same goroutines group.
 	parallelisms []*heartHubParallelism
 }
 
-// heartHubParallelism manage a part of hearts which are handled in same goroutines group.
+// heartHubParallelism manages a part of hearts which are handled in same goroutines group.
 type heartHubParallelism struct {
 	id       int
 	heartHub *HeartHub
 
-	hearts    sync.Map  // Hearts map, key => heart.key, value => heart.
-	beatsLink beatsLink // All of alive(no timeout) heartbeats in this heartHubParallelism.
+	hearts    map[string]*heart // hearts is a map: key => heart.key, value => *heart.
+	beatsLink beatsLink         // beatsLink stores all of alive(no timeout) heartbeats in the heartHubParallelism.
 
 	// When beatsLink is empty, cond will be use to waiting heartbeat.
 	// When modify beatsLink, cond.L will be use for mutual exclusion.
@@ -53,11 +55,11 @@ type heart struct {
 
 // beat means a heartbeat.
 type beat struct {
-	Heart *heart    // target heart
-	Time  time.Time // beaten time
+	heart *heart    // target heart
+	time  time.Time // beaten time
 
-	Prev *beat
-	Next *beat
+	prev *beat
+	next *beat
 }
 
 // beatsPool for reuse beats.
@@ -67,13 +69,14 @@ var beatsPool sync.Pool = sync.Pool{
 	},
 }
 
-// After HeartHub be closed, heartbeat method will return this error.
+// ErrHubClosed will be return from heartbeat method, after the HeartHub be closed.
 var ErrHubClosed error = errors.New("heartbeat: this HeartHub has been closed")
 
 // NewHeartHub will make a HeartHub which is the api entrance of this package.
-func NewHeartHub(options ...HeartHubOption) *HeartHub {
+func NewHeartHub(options ...heartHubOption) *HeartHub {
 	hub := &HeartHub{
 		logger:            newDefaultLogger(),
+		verboseInfo:       false,
 		ctx:               nil,
 		ctxCancelFn:       nil,
 		batchPopThreshold: 100,
@@ -130,7 +133,7 @@ func (hub *HeartHub) Heartbeat(key string) error {
 	}
 }
 
-// Close will release goroutines.
+// Close will release all goroutines.
 func (hub *HeartHub) Close() {
 	hub.ctxCancelFn()
 	for _, parallelism := range hub.parallelisms {
@@ -138,16 +141,20 @@ func (hub *HeartHub) Close() {
 	}
 }
 
-// GetEventChannel return a channel for receiving events.
+// GetEventChannel return a channel for receiving subscribed events.
 func (hub *HeartHub) GetEventChannel() <-chan *Event {
 	return hub.eventCh
 }
 
 const (
-	EventTimeout   = "TIME_OUT"   // EventTimeout event will trigger when a heart meet timeout.
-	EventHeartBeat = "HEART_BEAT" // EventHeartBeat event will trigger when a heart receive a heartbeat.
+	// EventTimeout event will trigger when a heart meet timeout.
+	EventTimeout = "TIME_OUT"
+
+	// EventHeartBeat event will trigger when a heart receive a heartbeat.
+	EventHeartBeat = "HEART_BEAT"
 )
 
+// Event just meats an event, you can use GetEventChannel method to receive subscribed events.
 type Event struct {
 	EventName string    `json:"event_name"`
 	HeartKey  string    `json:"heart_key"`
@@ -174,7 +181,7 @@ func (hub *HeartHub) sendEvent(eventName string, heart *heart, beatTime time.Tim
 		return true
 	default:
 		eventJsonBytes, _ := json.Marshal(event)
-		hub.logger.Err("event channel buffer is full, missed event:", string(eventJsonBytes))
+		hub.logger.Error("event channel buffer is full, missed event:", string(eventJsonBytes))
 		return false
 	}
 }
