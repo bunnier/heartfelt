@@ -19,8 +19,7 @@ type HeartHub struct {
 	hearts sync.Map // string->*Heart
 	cond   *sync.Cond
 
-	headBeat *beat
-	tailBeat *beat
+	beatLink beatLink
 
 	heartbeatCh chan *heart
 	eventCh     chan *Event
@@ -65,8 +64,7 @@ func NewHeartHub(options ...HeartHubOption) *HeartHub {
 		hearts: sync.Map{},
 		cond:   sync.NewCond(&sync.Mutex{}),
 
-		headBeat: nil,
-		tailBeat: nil,
+		beatLink: beatLink{},
 
 		heartbeatCh: make(chan *heart, 100),
 		eventCh:     make(chan *Event, 100),

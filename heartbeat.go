@@ -38,34 +38,10 @@ func (hub *HeartHub) startHandleHeartbeat() {
 
 			hub.cond.L.Lock()
 
-			currentBeat := &beat{Heart: heart, Time: time.Now()} // TODO: beat can reuse from a pool
-			lastBeat := heart.LastBeat
+			hub.beatLink.remove(heart.LastBeat) // remove old beat
 
-			// remove old beat from link
-			if lastBeat != nil {
-				hub.headBeat = lastBeat.Next
-
-				if hub.headBeat == lastBeat { // it is the head
-					hub.headBeat = lastBeat.Next
-				} else {
-					lastBeat.Prev.Next = lastBeat.Next
-				}
-
-				if hub.tailBeat == lastBeat { // it is the tail
-					hub.tailBeat = lastBeat.Prev
-				} else {
-					lastBeat.Next.Prev = lastBeat.Prev
-				}
-			}
-
-			// push current beat to tail of the link
-			if hub.tailBeat == nil { // the link is empty
-				hub.tailBeat, hub.headBeat = currentBeat, currentBeat
-			} else { // add current beat to the tail
-				currentBeat.Prev = hub.tailBeat
-				hub.tailBeat.Next = currentBeat
-				hub.tailBeat = currentBeat
-			}
+			heart.LastBeat = &beat{Heart: heart, Time: time.Now()} // TODO: beat can reuse from a pool
+			hub.beatLink.push(heart.LastBeat)                      // push new beat
 
 			hub.cond.L.Unlock()
 			hub.cond.Signal() // notify checking health
@@ -78,7 +54,7 @@ func (hub *HeartHub) startHealthCheck() {
 		for {
 			hub.cond.L.Lock()
 
-			for hub.headBeat == nil {
+			for hub.beatLink.headBeat == nil {
 				hub.cond.Wait() // waiting for beat
 				if hub.ctx.Err() != nil {
 					hub.cond.L.Unlock()
@@ -88,16 +64,21 @@ func (hub *HeartHub) startHealthCheck() {
 
 			var nextTimeoutDuration time.Duration
 			var popCount int
+			var firstBeat *beat
 
-			for hub.headBeat != nil {
-				if nextTimeoutDuration = hub.heartbeatTimeout - time.Since(hub.headBeat.Time); nextTimeoutDuration > 0 {
+			for {
+				if firstBeat = hub.beatLink.peek(); firstBeat != nil {
 					break
 				}
 
-				hub.sendEvent(EventTimeout, hub.headBeat.Heart.Key, hub.headBeat.Time, time.Now())
+				if nextTimeoutDuration = hub.heartbeatTimeout - time.Since(firstBeat.Time); nextTimeoutDuration > 0 {
+					break
+				}
 
-				hub.hearts.Delete(hub.headBeat.Heart.Key)
-				hub.headBeat = hub.headBeat.Next
+				hub.sendEvent(EventTimeout, firstBeat.Heart.Key, firstBeat.Time, time.Now())
+
+				hub.hearts.Delete(firstBeat.Heart.Key) // remove from map
+				hub.beatLink.pop()                     // pop timeout heartbeat
 
 				if popCount = popCount + 1; popCount >= hub.onceMaxPopCount {
 					break
