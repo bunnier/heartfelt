@@ -2,40 +2,139 @@ package heartfelt
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"hash/fnv"
 	"sync"
 	"time"
 )
 
+// HeartHub is the center of this module.
 type HeartHub struct {
 	logger      Logger
 	ctx         context.Context
 	ctxCancelFn func()
 
-	heartbeatTimeout time.Duration
+	timeout          time.Duration
 	onceMaxPopCount  int
+	beatChBufferSize int
 
-	hearts sync.Map // string->*Heart
-	cond   *sync.Cond
+	eventCh          chan *Event
+	subscribedEvents map[string]struct{}
 
-	beatLink beatLink
-
-	heartbeatCh chan *heart
-	eventCh     chan *Event
-	watchEvents map[string]struct{}
+	partitions []*heartHubPartition
 }
 
+// heartHubPartition manage a part of hearts.
+type heartHubPartition struct {
+	heartHub *HeartHub
+
+	hearts   sync.Map   // hearts map, key=> heart.key, value => heart
+	beatLink beatLink   // all of alive(no timeout) heartbeats in this partition.
+	cond     *sync.Cond // condition & mutex for doing modify
+
+	beatCh chan string // for receive heartbeats
+}
+
+// heart just means a heart, the target of heartbeat.
 type heart struct {
-	Key      string
-	LastBeat *beat
+	key      string // Key is the unique id of a heart.
+	lastBeat *beat
 }
 
+// beatLink is a doubly linked list,
+// store all of alive(no timeout) heartbeats in one partition by time sequences.
+type beatLink struct {
+	headBeat *beat
+	tailBeat *beat
+}
+
+// beat means a heartbeat.
 type beat struct {
-	Heart *heart
-	Time  time.Time
+	Heart *heart    // target heart
+	Time  time.Time // beaten time
 
 	Prev *beat
 	Next *beat
+}
+
+// beatsPool for reuse beats.
+var beatsPool sync.Pool = sync.Pool{
+	New: func() interface{} {
+		return &beat{}
+	},
+}
+
+// After HeartHub be closed, heartbeat method will return this error.
+var ErrHubClosed error = errors.New("heartbeat: ErrHubClosed")
+
+// NewHeartHub will make a HeartHub.
+func NewHeartHub(options ...HeartHubOption) *HeartHub {
+	hub := &HeartHub{
+		logger:           newDefaultLogger(),
+		ctx:              nil,
+		ctxCancelFn:      nil,
+		timeout:          time.Second * 30,
+		onceMaxPopCount:  10,
+		beatChBufferSize: 100,
+		eventCh:          nil,
+		subscribedEvents: map[string]struct{}{
+			EventTimeout: {},
+		},
+		partitions: nil,
+	}
+
+	for _, option := range options {
+		option(hub)
+	}
+
+	hub.ctx, hub.ctxCancelFn = context.WithCancel(context.Background())
+
+	if hub.eventCh == nil {
+		hub.eventCh = make(chan *Event, 100)
+	}
+
+	if hub.partitions == nil {
+		hub.partitions = make([]*heartHubPartition, 0, 1)
+	}
+
+	for i := 0; i < cap(hub.partitions); i++ {
+		p := newHeartHubPartition(hub)
+		hub.partitions = append(hub.partitions, p)
+		p.startHealthCheck()
+		p.startHandleHeartbeat()
+	}
+
+	return hub
+}
+
+// Heartbeat will beat the heart of specified key.
+func (hub *HeartHub) Heartbeat(key string) error {
+	partition := hub.getPartition(key)
+
+	select {
+	case <-hub.ctx.Done():
+		return ErrHubClosed
+	default:
+		partition.heartbeat(key)
+		now := time.Now()
+		hub.sendEvent(EventHeartBeat, key, now, now)
+		return nil
+	}
+}
+
+// Close will release goroutines.
+func (hub *HeartHub) Close() {
+	hub.ctxCancelFn()
+	for _, partition := range hub.partitions {
+		partition.wakeup()
+	}
+}
+
+// GetEventChannel return a channel for receiving events.
+func (hub *HeartHub) GetEventChannel() <-chan *Event {
+	return hub.eventCh
 }
 
 type Event struct {
@@ -45,127 +144,31 @@ type Event struct {
 	EventTime time.Time `json:"event_time"`
 }
 
-var ErrHubClosed error = errors.New("heartbeat: ErrHubClosed")
-
-func NewHeartHub(options ...HeartHubOption) *HeartHub {
-	hearthub := &HeartHub{
-		logger:      newDefaultLogger(),
-		ctx:         context.Background(),
-		ctxCancelFn: nil,
-
-		heartbeatTimeout: time.Second * 30,
-		onceMaxPopCount:  10,
-
-		hearts: sync.Map{},
-		cond:   sync.NewCond(&sync.Mutex{}),
-
-		beatLink: beatLink{},
-
-		heartbeatCh: nil,
-		eventCh:     nil,
-		watchEvents: map[string]struct{}{
-			EventTimeout: {},
-		},
+func (hub *HeartHub) sendEvent(eventName string, heartKey string, beatTime time.Time, eventTime time.Time) bool {
+	if _, ok := hub.subscribedEvents[eventName]; !ok {
+		return false
 	}
 
-	for _, option := range options {
-		option(hearthub)
+	event := &Event{
+		EventName: eventName,
+		HeartKey:  heartKey,
+		BeatTime:  beatTime,
+		EventTime: eventTime,
 	}
-
-	hearthub.ctx, hearthub.ctxCancelFn = context.WithCancel(hearthub.ctx)
-
-	if hearthub.eventCh == nil {
-		hearthub.eventCh = make(chan *Event, 100)
-	}
-
-	if hearthub.heartbeatCh == nil {
-		hearthub.heartbeatCh = make(chan *heart, 100)
-	}
-
-	// start goroutines
-	hearthub.startHealthCheck()
-	hearthub.startHandleHeartbeat()
-
-	return hearthub
-}
-
-func (hub *HeartHub) getHeart(key string) *heart {
-	// TODO 2 level shard
-	var h *heart
-	if hi, ok := hub.hearts.Load(key); ok {
-		h = hi.(*heart)
-	} else {
-		hi, _ = hub.hearts.LoadOrStore(key, &heart{key, nil})
-		h = hi.(*heart)
-	}
-	return h
-}
-
-func (hub *HeartHub) GetEventChannel() <-chan *Event {
-	return hub.eventCh
-}
-
-func (hub *HeartHub) Heartbeat(key string) error {
-	heart := hub.getHeart(key)
 
 	select {
-	case <-hub.ctx.Done():
-		return ErrHubClosed
-	case hub.heartbeatCh <- heart:
-		now := time.Now()
-		hub.sendEvent(EventHeartBeat, key, now, now)
-		return nil
+	case hub.eventCh <- event:
+		return true
+	default:
+		eventJsonBytes, _ := json.Marshal(event)
+		hub.logger.Err(fmt.Sprintf("error: event buffer is full, miss event: %s", string(eventJsonBytes)))
+		return false
 	}
 }
 
-func (hub *HeartHub) Close() {
-	hub.ctxCancelFn()
-	hub.cond.Broadcast()
-}
-
-type HeartHubOption func(hub *HeartHub)
-
-// WithTimeoutOption can set timeout to the hearthub.
-func WithTimeoutOption(timeout time.Duration) HeartHubOption {
-	return func(hub *HeartHub) {
-		hub.heartbeatTimeout = timeout
-	}
-}
-
-// WithContextOption can set context to the hearthub.
-func WithContextOption(ctx context.Context) HeartHubOption {
-	return func(hub *HeartHub) {
-		hub.ctx = ctx
-	}
-}
-
-// WithLoggerOption can set logger to the hearthub.
-func WithLoggerOption(logger Logger) HeartHubOption {
-	return func(hub *HeartHub) {
-		hub.logger = logger
-	}
-}
-
-// WithLoggerOption can set watch events to hearthub.
-func WithWatchEventOption(eventNames ...string) HeartHubOption {
-	return func(hub *HeartHub) {
-		hub.watchEvents = map[string]struct{}{}
-		for _, eventName := range eventNames {
-			hub.watchEvents[eventName] = struct{}{}
-		}
-	}
-}
-
-// WithEventBufferSizeOption can set event buffer size.
-func WithEventBufferSizeOption(bufferSize int) HeartHubOption {
-	return func(hub *HeartHub) {
-		hub.eventCh = make(chan *Event, bufferSize)
-	}
-}
-
-// WithHeartbeatBufferSizeOption can set heartbeat buffer size.
-func WithHeartbeatBufferSizeOption(bufferSize int) HeartHubOption {
-	return func(hub *HeartHub) {
-		hub.heartbeatCh = make(chan *heart, bufferSize)
-	}
+func (hub *HeartHub) getPartition(key string) *heartHubPartition {
+	fnv := fnv.New32a()
+	fnv.Write([]byte(key))
+	partitionNum := int(fnv.Sum32()) % len(hub.partitions)
+	return hub.partitions[partitionNum]
 }

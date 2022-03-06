@@ -1,10 +1,5 @@
 package heartfelt
 
-type beatLink struct {
-	headBeat *beat
-	tailBeat *beat
-}
-
 // remove a beat from link
 func (bLink *beatLink) remove(b *beat) bool {
 	if b == nil {
