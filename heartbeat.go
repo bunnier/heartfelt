@@ -96,7 +96,9 @@ func (hub *HeartHub) startHealthCheck() {
 
 				hub.sendEvent(EventTimeout, hub.headBeat.Heart.Key, hub.headBeat.Time, time.Now())
 
+				hub.hearts.Delete(hub.headBeat.Heart.Key)
 				hub.headBeat = hub.headBeat.Next
+
 				if popCount = popCount + 1; popCount >= hub.onceMaxPopCount {
 					break
 				}
