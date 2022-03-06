@@ -35,24 +35,20 @@ type heartHubParallelism struct {
 	id       int
 	heartHub *HeartHub
 
-	hearts   sync.Map   // hearts map, key => heart.key, value => heart
-	beatLink beatLink   // all of alive(no timeout) heartbeats in this heartHubParallelism.
-	cond     *sync.Cond // condition & mutex for doing modify
+	hearts    sync.Map  // Hearts map, key => heart.key, value => heart.
+	beatsLink beatsLink // All of alive(no timeout) heartbeats in this heartHubParallelism.
 
+	// When beatsLink is empty, cond will be use to waiting heartbeat.
+	// When modify beatsLink, cond.L will be use for mutual exclusion.
+	cond   *sync.Cond
 	beatCh chan string // for receive heartbeats
 }
 
 // heart just means a heart, the target of heartbeat.
 type heart struct {
-	key      string // Key is the unique id of a heart.
-	lastBeat *beat
-}
-
-// beatLink is a doubly linked list,
-// store all of alive(no timeout) heartbeats in one heartHubParallelism by time sequences.
-type beatLink struct {
-	headBeat *beat
-	tailBeat *beat
+	key        string // Key is the unique id of a heart.
+	joinTime   time.Time
+	latestBeat *beat
 }
 
 // beat means a heartbeat.
@@ -107,7 +103,7 @@ func NewHeartHub(options ...HeartHubOption) *HeartHub {
 	for i := 1; i <= cap(hub.parallelisms); i++ {
 		parallelism := newHeartHubParallelism(i, hub)
 		hub.parallelisms = append(hub.parallelisms, parallelism)
-		parallelism.startHealthCheck()
+		parallelism.startTimeoutCheck()
 		parallelism.startHandleHeartbeat()
 	}
 
@@ -150,7 +146,7 @@ func (hub *HeartHub) GetEventChannel() <-chan *Event {
 }
 
 const (
-	EventTimeout   = "TIME_OUT"   // EventTimeout event will trigger when a heart meet timeout
+	EventTimeout   = "TIME_OUT"   // EventTimeout event will trigger when a heart meet timeout.
 	EventHeartBeat = "HEART_BEAT" // EventHeartBeat event will trigger when a heart receive a heartbeat.
 )
 

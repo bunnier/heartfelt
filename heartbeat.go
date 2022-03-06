@@ -1,18 +1,19 @@
 package heartfelt
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
 
 func newHeartHubParallelism(id int, hub *HeartHub) *heartHubParallelism {
 	return &heartHubParallelism{
-		id:       id,
-		heartHub: hub,
-		hearts:   sync.Map{},
-		beatLink: beatLink{},
-		cond:     sync.NewCond(&sync.Mutex{}),
-		beatCh:   make(chan string, hub.beatChBufferSize),
+		id:        id,
+		heartHub:  hub,
+		hearts:    sync.Map{},
+		beatsLink: beatsLink{},
+		cond:      sync.NewCond(&sync.Mutex{}),
+		beatCh:    make(chan string, hub.beatChBufferSize),
 	}
 }
 
@@ -21,7 +22,7 @@ func (parallelism *heartHubParallelism) getHeart(key string) *heart {
 	if hi, ok := parallelism.hearts.Load(key); ok {
 		h = hi.(*heart)
 	} else {
-		hi, ok = parallelism.hearts.LoadOrStore(key, &heart{key, nil})
+		hi, ok = parallelism.hearts.LoadOrStore(key, &heart{key, time.Now(), nil})
 		if !ok {
 			parallelism.heartHub.logger.Info("new heart key:", key)
 		}
@@ -41,6 +42,7 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 			var heart *heart
 			select {
 			case <-parallelism.heartHub.ctx.Done():
+				parallelism.heartHub.logger.Info("ctx has been done, exit heartbeat handling goroutine, parallelismId:", parallelism.id)
 				return
 			case key := <-parallelism.beatCh:
 				heart = parallelism.getHeart(key)
@@ -48,30 +50,32 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 
 			parallelism.cond.L.Lock()
 
-			parallelism.beatLink.remove(heart.lastBeat) // remove old beat
+			parallelism.beatsLink.remove(heart.latestBeat) // remove old beat
 
 			beat := beatsPool.Get().(*beat)
 			beat.Heart = heart
 			beat.Time = time.Now()
 
-			heart.lastBeat = beat
-			parallelism.beatLink.push(heart.lastBeat) // push new beat
+			heart.latestBeat = beat
+			parallelism.beatsLink.push(heart.latestBeat) // push new beat
 
 			parallelism.cond.L.Unlock()
-			parallelism.cond.Signal() // notify checking health
+			parallelism.cond.Signal() // Notify timeout checking goroutine.
 		}
 	}()
 }
 
-// startHealthCheck start a goroutine to find timeout hearts.
-func (parallelism *heartHubParallelism) startHealthCheck() {
+// startTimeoutCheck start a goroutine to find timeout hearts.
+func (parallelism *heartHubParallelism) startTimeoutCheck() {
 	go func() {
 		for {
 			parallelism.cond.L.Lock()
 
-			// when beatlink is empty, use cond to waiting heartbeat.
-			for parallelism.beatLink.headBeat == nil {
-				parallelism.heartHub.logger.Info("beatLink is empty, waiting for cond, parallelismId:", parallelism.id)
+			parallelism.heartHub.logger.Info("begin to check timeout heartbeat, parallelismId:", parallelism.id)
+
+			// When beatsLink is empty, use cond to waiting heartbeat.
+			for parallelism.beatsLink.headBeat == nil {
+				parallelism.heartHub.logger.Info("beatsLink is empty, waiting for cond, parallelismId:", parallelism.id)
 
 				parallelism.cond.Wait()
 				if parallelism.heartHub.ctx.Err() != nil {
@@ -87,17 +91,24 @@ func (parallelism *heartHubParallelism) startHealthCheck() {
 			var popNum int
 			for {
 				var firstBeat *beat
-				if firstBeat = parallelism.beatLink.peek(); firstBeat != nil {
+				if firstBeat = parallelism.beatsLink.peek(); firstBeat != nil {
 					break
 				}
 
 				if nextTimeoutDuration = parallelism.heartHub.timeout - time.Since(firstBeat.Time); nextTimeoutDuration > 0 {
-					parallelism.heartHub.logger.Info("timeout heartbeats have been handled, parallelismId:", parallelism.id)
-					break // have not be timeout yet
+					break
 				}
 
-				parallelism.hearts.Delete(firstBeat.Heart.key) // remove the heart from the hearts map
-				beat := parallelism.beatLink.pop()             // pop the timeout heartbeat
+				// time out workflow...
+				parallelism.heartHub.logger.Info(fmt.Sprintf(
+					"found a timeout heart, parallelismId: %d, key: %s, join time: %T, last beat: %T",
+					parallelism.id,
+					firstBeat.Heart.key,
+					firstBeat.Heart.joinTime,
+					firstBeat.Time))
+
+				parallelism.hearts.Delete(firstBeat.Heart.key) // Remove the heart from the hearts map.
+				beat := parallelism.beatsLink.pop()            // Pop the timeout heartbeat.
 
 				// Clean beat and then put back to heartbeat pool.
 				beat.Heart = nil
@@ -106,7 +117,7 @@ func (parallelism *heartHubParallelism) startHealthCheck() {
 				beat.Next = nil
 				beatsPool.Put(beat)
 
-				parallelism.heartHub.sendEvent(EventTimeout, firstBeat.Heart.key, firstBeat.Time, time.Now()) // trigger timeout event
+				parallelism.heartHub.sendEvent(EventTimeout, firstBeat.Heart.key, firstBeat.Time, time.Now()) // Trigger timeout event.
 
 				// In extreme cases, it may have large number of timeout heartbeats.
 				// For avoid the timeout handle goroutine occupy much time,
@@ -120,8 +131,11 @@ func (parallelism *heartHubParallelism) startHealthCheck() {
 
 			parallelism.cond.L.Unlock()
 
+			parallelism.heartHub.logger.Info("end checking timeout heartbeat, parallelismId:", parallelism.id)
+
 			select {
 			case <-parallelism.heartHub.ctx.Done():
+				parallelism.heartHub.logger.Info("ctx has been done, exit timeout checking goroutine, parallelismId:", parallelism.id)
 				return
 			case <-time.After(nextTimeoutDuration):
 			}
@@ -129,7 +143,7 @@ func (parallelism *heartHubParallelism) startHealthCheck() {
 	}()
 }
 
-// wakeup waiting goroutine
+// wakeup waiting goroutine.
 func (parallelism *heartHubParallelism) wakeup() {
 	parallelism.cond.Broadcast()
 }
