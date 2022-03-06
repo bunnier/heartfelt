@@ -94,7 +94,7 @@ func (parallelism *heartHubParallelism) startTimeoutCheck() {
 			var popNum int
 			for {
 				var firstBeat *beat
-				if firstBeat = parallelism.beatsLink.peek(); firstBeat != nil {
+				if firstBeat = parallelism.beatsLink.peek(); firstBeat == nil {
 					break
 				}
 
@@ -111,16 +111,15 @@ func (parallelism *heartHubParallelism) startTimeoutCheck() {
 					firstBeat.Time))
 
 				parallelism.hearts.Delete(firstBeat.Heart.key) // Remove the heart from the hearts map.
-				beat := parallelism.beatsLink.pop()            // Pop the timeout heartbeat.
-
-				// Clean beat and then put back to heartbeat pool.
-				beat.Heart = nil
-				beat.Time = time.Time{}
-				beat.Prev = nil
-				beat.Next = nil
-				beatsPool.Put(beat)
-
+				parallelism.beatsLink.pop()                    // Pop the timeout heartbeat.
 				parallelism.heartHub.sendEvent(EventTimeout, firstBeat.Heart, firstBeat.Time, time.Now())
+
+				// Clean beat and then put back to heartbeat pool (note: clean is not necessary).
+				firstBeat.Heart = nil
+				firstBeat.Time = time.Time{}
+				firstBeat.Prev = nil
+				firstBeat.Next = nil
+				beatsPool.Put(firstBeat)
 
 				// In extreme cases, it may have large number of timeout heartbeats.
 				// For avoid the timeout handle goroutine occupy much time,
