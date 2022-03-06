@@ -48,13 +48,16 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 				heart = parallelism.getHeart(key)
 			}
 
+			now := time.Now()
+			parallelism.heartHub.sendEvent(EventHeartBeat, heart, now, now)
+
 			parallelism.cond.L.Lock()
 
 			parallelism.beatsLink.remove(heart.latestBeat) // remove old beat
 
 			beat := beatsPool.Get().(*beat)
 			beat.Heart = heart
-			beat.Time = time.Now()
+			beat.Time = now
 
 			heart.latestBeat = beat
 			parallelism.beatsLink.push(heart.latestBeat) // push new beat
@@ -117,7 +120,7 @@ func (parallelism *heartHubParallelism) startTimeoutCheck() {
 				beat.Next = nil
 				beatsPool.Put(beat)
 
-				parallelism.heartHub.sendEvent(EventTimeout, firstBeat.Heart.key, firstBeat.Time, time.Now()) // Trigger timeout event.
+				parallelism.heartHub.sendEvent(EventTimeout, firstBeat.Heart, firstBeat.Time, time.Now())
 
 				// In extreme cases, it may have large number of timeout heartbeats.
 				// For avoid the timeout handle goroutine occupy much time,

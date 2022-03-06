@@ -126,8 +126,6 @@ func (hub *HeartHub) Heartbeat(key string) error {
 		return ErrHubClosed
 	default:
 		parallelism.heartbeat(key)
-		now := time.Now()
-		hub.sendEvent(EventHeartBeat, key, now, now)
 		return nil
 	}
 }
@@ -153,18 +151,20 @@ const (
 type Event struct {
 	EventName string    `json:"event_name"`
 	HeartKey  string    `json:"heart_key"`
+	JoinTime  time.Time `json:"join_time"`
 	BeatTime  time.Time `json:"beat_time"`
 	EventTime time.Time `json:"event_time"`
 }
 
-func (hub *HeartHub) sendEvent(eventName string, heartKey string, beatTime time.Time, eventTime time.Time) bool {
+func (hub *HeartHub) sendEvent(eventName string, heart *heart, beatTime time.Time, eventTime time.Time) bool {
 	if _, ok := hub.subscribedEvents[eventName]; !ok {
 		return false
 	}
 
 	event := &Event{
 		EventName: eventName,
-		HeartKey:  heartKey,
+		HeartKey:  heart.key,
+		JoinTime:  heart.joinTime,
 		BeatTime:  beatTime,
 		EventTime: eventTime,
 	}
