@@ -1,4 +1,7 @@
-# heartfelt[WIP]
+# heartfelt
+
+[![Go](https://github.com/bunnier/heartfelt/actions/workflows/go.yml/badge.svg)](https://github.com/bunnier/heartfelt/actions/workflows/go.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/bunnier/heartfelt)](https://goreportcard.com/report/github.com/bunnier/heartfelt)
 
 A high performance heartbeat watching manager.
 
