@@ -5,7 +5,15 @@
 
 A high performance heartbeat watching manager.
 
-## Example
+## Algorithm
+
+![Algorithm](./docs/algorithm.png)
+
+## Usage
+
+[GoDocs](https://pkg.go.dev/github.com/bunnier/heartfelt)
+
+Example
 
 ```go
 package main
