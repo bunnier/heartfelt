@@ -37,13 +37,13 @@ type heartHubParallelism struct {
 	id       int
 	heartHub *HeartHub
 
-	hearts    map[string]*heart // hearts is a map: key => heart.key, value => *heart.
+	hearts    map[string]*heart // hearts is a map: key => heart.key, value => *heart. Modification must be wrapped in cond.L.
 	beatsLink beatsLink         // beatsLink stores all of alive(no timeout) heartbeats in the heartHubParallelism.
 
 	// When beatsLink is empty, cond will be use to waiting heartbeat.
 	// When modify beatsLink, cond.L will be use for mutual exclusion.
-	cond   *sync.Cond
-	beatCh chan string // for receive heartbeats
+	cond         *sync.Cond
+	beatSignalCh chan beatChSignal // for passing heartbeat signal to heartbeat handling goroutine.
 }
 
 // heart just means a heart, the target of heartbeat.
@@ -60,6 +60,12 @@ type beat struct {
 
 	prev *beat
 	next *beat
+}
+
+// beatChSignal is a signal will be pass to heartbeat handling goroutine by beatSignalCh.
+type beatChSignal struct {
+	key    string // target key
+	remove bool   // true will remove key
 }
 
 // beatsPool for reuse beats.
@@ -128,7 +134,20 @@ func (hub *HeartHub) Heartbeat(key string) error {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		parallelism.heartbeat(key)
+		parallelism.heartbeat(key, false)
+		return nil
+	}
+}
+
+// Remove will stop watching the service of key from the heartHub.
+func (hub *HeartHub) Remove(key string) error {
+	parallelism := hub.getParallelism(key)
+
+	select {
+	case <-hub.ctx.Done():
+		return ErrHubClosed
+	default:
+		parallelism.heartbeat(key, true)
 		return nil
 	}
 }

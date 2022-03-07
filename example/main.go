@@ -28,6 +28,7 @@ func main() {
 	for {
 		select {
 		case event := <-eventCh:
+			// The special service cheking will be stop after timeout or heartHub.Remove(key) be called manually.
 			log.Default().Printf("received an event: heartKey=%s eventName=%s, lastBeatTime=%d, eventTime=%d, findTime=%d",
 				event.HeartKey, event.EventName, event.BeatTime.UnixMilli(), event.EventTime.UnixMilli(), event.EventTime.UnixMilli()-event.BeatTime.UnixMilli())
 		case <-ctx.Done():

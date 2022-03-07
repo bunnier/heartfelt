@@ -8,62 +8,63 @@ import (
 
 func newHeartHubParallelism(id int, hub *HeartHub) *heartHubParallelism {
 	return &heartHubParallelism{
-		id:        id,
-		heartHub:  hub,
-		hearts:    map[string]*heart{},
-		beatsLink: beatsLink{},
-		cond:      sync.NewCond(&sync.Mutex{}),
-		beatCh:    make(chan string, hub.beatChBufferSize),
+		id:           id,
+		heartHub:     hub,
+		hearts:       map[string]*heart{},
+		beatsLink:    beatsLink{},
+		cond:         sync.NewCond(&sync.Mutex{}),
+		beatSignalCh: make(chan beatChSignal, hub.beatChBufferSize),
 	}
 }
 
-// getHeart must be used in a cond lock.
-func (parallelism *heartHubParallelism) getHeart(key string) *heart {
-	if h, ok := parallelism.hearts[key]; ok {
-		return h
-	}
-
-	h := &heart{key, time.Now(), nil}
-	parallelism.hearts[key] = h
-
-	if parallelism.heartHub.verboseInfo {
-		parallelism.heartHub.logger.Info("new heart key:", key)
-	}
-
-	return h
-}
-
-func (parallelism *heartHubParallelism) heartbeat(key string) {
-	parallelism.beatCh <- key
+func (parallelism *heartHubParallelism) heartbeat(key string, remove bool) {
+	parallelism.beatSignalCh <- beatChSignal{key, remove}
 }
 
 // startHandleHeartbeat starts a goroutine to handle heartbeats.
 func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 	go func() {
 		for {
-			var key string
+			var signal beatChSignal
 			select {
 			case <-parallelism.heartHub.ctx.Done():
 				if parallelism.heartHub.verboseInfo {
 					parallelism.heartHub.logger.Info("ctx has been done, exit heartbeat handling goroutine, parallelismId:", parallelism.id)
 				}
 				return
-			case key = <-parallelism.beatCh:
+			case signal = <-parallelism.beatSignalCh:
 			}
-
-			now := time.Now()
 
 			parallelism.cond.L.Lock()
 
-			heart := parallelism.getHeart(key)
-			parallelism.beatsLink.remove(heart.latestBeat) // remove old beat
+			h, ok := parallelism.hearts[signal.key]
 
-			beat := beatsPool.Get().(*beat)
-			beat.heart = heart
-			beat.time = now
-			heart.latestBeat = beat
-			parallelism.beatsLink.push(heart.latestBeat) // push this new beat
-			parallelism.heartHub.sendEvent(EventHeartBeat, heart, now, now)
+			if signal.remove { // it is a remove signal.
+				if ok {
+					delete(parallelism.hearts, h.key)          // Remove the heart from the hearts map.
+					parallelism.beatsLink.remove(h.latestBeat) // Remove relative beat from beatlink.
+				}
+			} else { // So it is a beat signal.
+				if !ok {
+					// First beating, add the key to hearts.
+					h = &heart{signal.key, time.Now(), nil}
+					parallelism.hearts[signal.key] = h
+
+					if parallelism.heartHub.verboseInfo {
+						parallelism.heartHub.logger.Info("new heart key:", signal.key)
+					}
+				}
+
+				parallelism.beatsLink.remove(h.latestBeat) // remove old beat
+
+				now := time.Now()
+				beat := beatsPool.Get().(*beat)
+				beat.heart = h
+				beat.time = now
+				h.latestBeat = beat
+				parallelism.beatsLink.push(h.latestBeat) // push this new beat
+				parallelism.heartHub.sendEvent(EventHeartBeat, h, now, now)
+			}
 
 			parallelism.cond.L.Unlock()
 			parallelism.cond.Signal() // Notify timeout checking goroutine.
