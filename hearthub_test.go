@@ -3,6 +3,7 @@ package heartfelt
 import (
 	"context"
 	"reflect"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -137,6 +138,7 @@ OVER:
 		}
 	}
 
+	sort.IntSlice(get).Sort()
 	if !reflect.DeepEqual(want, get) {
 		t.Errorf("hearthub workflow want %v get %v", want, get)
 	}
