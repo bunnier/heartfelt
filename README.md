@@ -2,6 +2,7 @@
 
 [![Go](https://github.com/bunnier/heartfelt/actions/workflows/go.yml/badge.svg)](https://github.com/bunnier/heartfelt/actions/workflows/go.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bunnier/heartfelt)](https://goreportcard.com/report/github.com/bunnier/heartfelt)
+[![Go Reference](https://pkg.go.dev/badge/github.com/bunnier/heartfelt.svg)](https://pkg.go.dev/github.com/bunnier/heartfelt)
 
 A high performance heartbeat watching manager.
 
@@ -10,8 +11,6 @@ A high performance heartbeat watching manager.
 ![Algorithm](./docs/algorithm.png)
 
 ## Usage
-
-[GoDocs](https://pkg.go.dev/github.com/bunnier/heartfelt)
 
 Example
 
