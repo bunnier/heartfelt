@@ -67,8 +67,8 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 				beat.time = now
 				beat.disposable = signal.disposable
 				h.latestBeat = beat
-				parallelism.beatsLink.push(h.latestBeat) // push this new beat
-				parallelism.heartHub.sendEvent(EventHeartBeat, h, now, now)
+				parallelism.beatsLink.push(beat) // push this new beat
+				parallelism.heartHub.sendEvent(EventHeartBeat, h, beat, now)
 			}
 
 			parallelism.cond.L.Unlock()
@@ -134,7 +134,7 @@ func (parallelism *heartHubParallelism) startTimeoutCheck() {
 						now.UnixMilli()-firstBeat.time.UnixMilli()))
 				}
 
-				parallelism.heartHub.sendEvent(EventTimeout, firstBeat.heart, firstBeat.time, now)
+				parallelism.heartHub.sendEvent(EventTimeout, firstBeat.heart, firstBeat, now)
 
 				parallelism.beatsLink.pop() // Pop the timeout heartbeat.
 				if firstBeat.disposable {

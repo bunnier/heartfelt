@@ -180,24 +180,26 @@ const (
 
 // Event just meats an event, you can use GetEventChannel method to receive subscribed events.
 type Event struct {
-	EventName string    `json:"event_name"`
-	HeartKey  string    `json:"heart_key"`
-	JoinTime  time.Time `json:"join_time"`
-	BeatTime  time.Time `json:"beat_time"`
-	EventTime time.Time `json:"event_time"`
+	EventName  string    `json:"event_name"`
+	HeartKey   string    `json:"heart_key"`
+	JoinTime   time.Time `json:"join_time"`  // JoinTime is register time of the key.
+	EventTime  time.Time `json:"event_time"` // Event trigger time.
+	BeatTime   time.Time `json:"beat_time"`
+	Disposable bool      `json:"disposable"`
 }
 
-func (hub *HeartHub) sendEvent(eventName string, heart *heart, beatTime time.Time, eventTime time.Time) bool {
+func (hub *HeartHub) sendEvent(eventName string, heart *heart, beat *beat, eventTime time.Time) bool {
 	if _, ok := hub.subscribedEvents[eventName]; !ok {
 		return false
 	}
 
 	event := &Event{
-		EventName: eventName,
-		HeartKey:  heart.key,
-		JoinTime:  heart.joinTime,
-		BeatTime:  beatTime,
-		EventTime: eventTime,
+		EventName:  eventName,
+		HeartKey:   heart.key,
+		JoinTime:   heart.joinTime,
+		EventTime:  eventTime,
+		BeatTime:   beat.time,
+		Disposable: beat.disposable,
 	}
 
 	select {

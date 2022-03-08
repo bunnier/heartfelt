@@ -77,8 +77,9 @@ func startFakeServices(ctx context.Context, heartHub *heartfelt.HeartHub, servic
 				case <-ctx.Done():
 					return
 				default:
-					// send heartbeat..
-					// second parameter means auto removing the key from heartbut after timeout.
+					// Send heartbeat..
+					// Second parameter means auto removing the key from heartHub
+					// after timeout, otherwise it will be watched again.
 					heartHub.Heartbeat(key, true)
 					time.Sleep(500 * time.Millisecond)
 				}
