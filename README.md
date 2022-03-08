@@ -13,6 +13,17 @@ A high performance heartbeat watching manager.
 
 ## Usage
 
+Core [Apis](https://pkg.go.dev/github.com/bunnier/heartfelt)
+
+```go
+type HeartHub
+func NewHeartHub(options ...heartHubOption) *HeartHub
+
+func (hub *HeartHub) Heartbeat(key string, disposable bool) error
+func (hub *HeartHub) GetEventChannel() <-chan *Event
+func (hub *HeartHub) Remove(key string) error
+func (hub *HeartHub) Close()
+```
 Example
 
 ```go
