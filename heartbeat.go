@@ -17,8 +17,12 @@ func newHeartHubParallelism(id int, hub *HeartHub) *heartHubParallelism {
 	}
 }
 
-func (parallelism *heartHubParallelism) heartbeat(key string, remove bool) {
-	parallelism.beatSignalCh <- beatChSignal{key, remove}
+func (parallelism *heartHubParallelism) heartbeat(key string, end bool, disposable bool) {
+	parallelism.beatSignalCh <- beatChSignal{
+		key:        key,
+		end:        end,
+		disposable: disposable,
+	}
 }
 
 // startHandleHeartbeat starts a goroutine to handle heartbeats.
@@ -39,7 +43,7 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 
 			h, ok := parallelism.hearts[signal.key]
 
-			if signal.remove { // it is a remove signal.
+			if signal.end { // it is a remove signal.
 				if ok {
 					delete(parallelism.hearts, h.key)          // Remove the heart from the hearts map.
 					parallelism.beatsLink.remove(h.latestBeat) // Remove relative beat from beatlink.
@@ -61,6 +65,7 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 				beat := beatsPool.Get().(*beat)
 				beat.heart = h
 				beat.time = now
+				beat.disposable = signal.disposable
 				h.latestBeat = beat
 				parallelism.beatsLink.push(h.latestBeat) // push this new beat
 				parallelism.heartHub.sendEvent(EventHeartBeat, h, now, now)
@@ -131,11 +136,16 @@ func (parallelism *heartHubParallelism) startTimeoutCheck() {
 
 				parallelism.heartHub.sendEvent(EventTimeout, firstBeat.heart, firstBeat.time, now)
 
-				delete(parallelism.hearts, firstBeat.heart.key) // Remove the heart from the hearts map.
-				parallelism.beatsLink.pop()                     // Pop the timeout heartbeat.
-
-				// Clean beat and then put back to heartbeat pool.
-				beatsPool.Put(firstBeat)
+				parallelism.beatsLink.pop() // Pop the timeout heartbeat.
+				if firstBeat.disposable {
+					delete(parallelism.hearts, firstBeat.heart.key) // Remove the heart from the hearts map.
+					beatsPool.Put(firstBeat)                        // Clean beat and then put back to heartbeat pool.
+				} else {
+					// Put it to beatlist directly instead of beatChSignal, otherwise might have deadlock.
+					// Reuse firstBeat here.
+					firstBeat.time = now
+					parallelism.beatsLink.push(firstBeat) // push this new beat
+				}
 
 				// In extreme cases, it may have large number of timeout heartbeats.
 				// For avoid the timeout handle goroutine occupy much time,

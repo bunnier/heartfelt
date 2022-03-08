@@ -55,8 +55,9 @@ type heart struct {
 
 // beat means a heartbeat.
 type beat struct {
-	heart *heart    // target heart
-	time  time.Time // beaten time
+	heart      *heart    // target heart
+	time       time.Time // beaten time
+	disposable bool      // set to true for auto removing the key from heartbut after timeout.
 
 	prev *beat
 	next *beat
@@ -64,8 +65,9 @@ type beat struct {
 
 // beatChSignal is a signal will be pass to heartbeat handling goroutine by beatSignalCh.
 type beatChSignal struct {
-	key    string // target key
-	remove bool   // true will remove key
+	key        string // target key
+	end        bool   // set to true to remove the key from heartbut.
+	disposable bool   // set to true for auto removing the key from heartbut after timeout.
 }
 
 // beatsPool for reuse beats.
@@ -127,19 +129,22 @@ func (hub *HeartHub) getParallelism(key string) *heartHubParallelism {
 }
 
 // Heartbeat will beat the heart of specified key.
-func (hub *HeartHub) Heartbeat(key string) error {
+//   @key: the unique key of target service.
+//   @disposable: set to true for auto removing the key from heartbut after timeout.
+func (hub *HeartHub) Heartbeat(key string, disposable bool) error {
 	parallelism := hub.getParallelism(key)
 
 	select {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		parallelism.heartbeat(key, false)
+		parallelism.heartbeat(key, false, disposable)
 		return nil
 	}
 }
 
 // Remove will stop watching the service of key from the heartHub.
+//   @key: the unique key of target service.
 func (hub *HeartHub) Remove(key string) error {
 	parallelism := hub.getParallelism(key)
 
@@ -147,12 +152,12 @@ func (hub *HeartHub) Remove(key string) error {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		parallelism.heartbeat(key, true)
+		parallelism.heartbeat(key, true, true)
 		return nil
 	}
 }
 
-// Close will release all goroutines.
+// Close will stop watch all service key and release all goroutines.
 func (hub *HeartHub) Close() {
 	hub.ctxCancelFn()
 	for _, parallelism := range hub.parallelisms {

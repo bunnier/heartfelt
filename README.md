@@ -46,7 +46,7 @@ func main() {
 		select {
 		case event := <-eventCh:
 			// The special service cheking will be stop after timeout or heartHub.Remove(key) be called manually.
-			log.Default().Printf("received an event: heartKey=%s eventName=%s, lastBeatTime=%d, eventTime=%d, findTime=%d",
+			log.Default().Printf("received an event: heartKey=%s eventName=%s, lastBeatTime=%d, eventTime=%d, foundTime=%d",
 				event.HeartKey, event.EventName, event.BeatTime.UnixMilli(), event.EventTime.UnixMilli(), event.EventTime.UnixMilli()-event.BeatTime.UnixMilli())
 		case <-ctx.Done():
 			heartHub.Close()
@@ -77,7 +77,9 @@ func startFakeServices(ctx context.Context, heartHub *heartfelt.HeartHub, servic
 				case <-ctx.Done():
 					return
 				default:
-					heartHub.Heartbeat(key) // send heartbeat..
+					// send heartbeat..
+					// second parameter means auto removing the key from heartbut after timeout.
+					heartHub.Heartbeat(key, true)
 					time.Sleep(500 * time.Millisecond)
 				}
 			}
@@ -89,12 +91,12 @@ func startFakeServices(ctx context.Context, heartHub *heartfelt.HeartHub, servic
 Output
 
 ```bash
-2022/03/07 21:37:29 received an event: heartKey=67 eventName=TIME_OUT, lastBeatTime=1646660248392, eventTime=1646660249392, findTime=1000
-2022/03/07 21:37:29 received an event: heartKey=100 eventName=TIME_OUT, lastBeatTime=1646660248392, eventTime=1646660249392, findTime=1000
-2022/03/07 21:37:29 received an event: heartKey=120 eventName=TIME_OUT, lastBeatTime=1646660248392, eventTime=1646660249392, findTime=1000
-2022/03/07 21:37:32 received an event: heartKey=3456 eventName=TIME_OUT, lastBeatTime=1646660251406, eventTime=1646660252406, findTime=1000
-2022/03/07 21:37:32 received an event: heartKey=4000 eventName=TIME_OUT, lastBeatTime=1646660251906, eventTime=1646660252906, findTime=1000
-2022/03/07 21:37:34 received an event: heartKey=5221 eventName=TIME_OUT, lastBeatTime=1646660253409, eventTime=1646660254409, findTime=1000
-2022/03/07 21:37:36 received an event: heartKey=7899 eventName=TIME_OUT, lastBeatTime=1646660255914, eventTime=1646660256914, findTime=1000
-2022/03/07 21:37:38 received an event: heartKey=9999 eventName=TIME_OUT, lastBeatTime=1646660257923, eventTime=1646660258923, findTime=1000
+2022/03/08 21:38:32 received an event: heartKey=67 eventName=TIME_OUT, lastBeatTime=1646746711297, eventTime=1646746712297, foundTime=1000
+2022/03/08 21:38:32 received an event: heartKey=100 eventName=TIME_OUT, lastBeatTime=1646746711297, eventTime=1646746712297, foundTime=1000
+2022/03/08 21:38:32 received an event: heartKey=120 eventName=TIME_OUT, lastBeatTime=1646746711297, eventTime=1646746712297, foundTime=1000
+2022/03/08 21:38:35 received an event: heartKey=3456 eventName=TIME_OUT, lastBeatTime=1646746714305, eventTime=1646746715305, foundTime=1000
+2022/03/08 21:38:35 received an event: heartKey=4000 eventName=TIME_OUT, lastBeatTime=1646746714807, eventTime=1646746715807, foundTime=1000
+2022/03/08 21:38:37 received an event: heartKey=5221 eventName=TIME_OUT, lastBeatTime=1646746716310, eventTime=1646746717310, foundTime=1000
+2022/03/08 21:38:39 received an event: heartKey=7899 eventName=TIME_OUT, lastBeatTime=1646746718818, eventTime=1646746719818, foundTime=1000
+2022/03/08 21:38:41 received an event: heartKey=9999 eventName=TIME_OUT, lastBeatTime=1646746720821, eventTime=1646746721821, foundTime=1000
 ```

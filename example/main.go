@@ -29,7 +29,7 @@ func main() {
 		select {
 		case event := <-eventCh:
 			// The special service cheking will be stop after timeout or heartHub.Remove(key) be called manually.
-			log.Default().Printf("received an event: heartKey=%s eventName=%s, lastBeatTime=%d, eventTime=%d, findTime=%d",
+			log.Default().Printf("received an event: heartKey=%s eventName=%s, lastBeatTime=%d, eventTime=%d, foundTime=%d",
 				event.HeartKey, event.EventName, event.BeatTime.UnixMilli(), event.EventTime.UnixMilli(), event.EventTime.UnixMilli()-event.BeatTime.UnixMilli())
 		case <-ctx.Done():
 			heartHub.Close()
@@ -60,7 +60,9 @@ func startFakeServices(ctx context.Context, heartHub *heartfelt.HeartHub, servic
 				case <-ctx.Done():
 					return
 				default:
-					heartHub.Heartbeat(key) // send heartbeat..
+					// send heartbeat..
+					// second parameter means auto removing the key from heartbut after timeout.
+					heartHub.Heartbeat(key, true)
 					time.Sleep(500 * time.Millisecond)
 				}
 			}
