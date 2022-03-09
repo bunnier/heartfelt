@@ -27,7 +27,7 @@ type HeartHub struct {
 	subscribedEvents map[string]struct{}
 	eventCh          chan *Event
 
-	// More parallelisms mean more parallel capability.
+	// More parallelisms mean more parallel capabilities.
 	// A heartHubParallelism manages a part of hearts which are handled in same goroutines group.
 	parallelisms []*heartHubParallelism
 }
@@ -40,8 +40,8 @@ type heartHubParallelism struct {
 	hearts    map[string]*heart // hearts is a map: key => heart.key, value => *heart. Modification must be wrapped in cond.L.
 	beatsLink beatsLink         // beatsLink stores all of alive(no timeout) heartbeats in the heartHubParallelism.
 
-	// When beatsLink is empty, cond will be use to waiting heartbeat.
-	// When modify beatsLink, cond.L will be use for mutual exclusion.
+	// When beatsLink is empty, cond will be used to waiting heartbeat.
+	// When modify beatsLink, cond.L will be used to doing mutual exclusion.
 	cond         *sync.Cond
 	beatSignalCh chan beatChSignal // for passing heartbeat signal to heartbeat handling goroutine.
 }
@@ -157,7 +157,7 @@ func (hub *HeartHub) Remove(key string) error {
 	}
 }
 
-// Close will stop watch all service key and release all goroutines.
+// Close will stop watch all service keys and release all goroutines.
 func (hub *HeartHub) Close() {
 	hub.ctxCancelFn()
 	for _, parallelism := range hub.parallelisms {
@@ -174,11 +174,11 @@ const (
 	// EventTimeout event will trigger when a heart meet timeout.
 	EventTimeout = "TIME_OUT"
 
-	// EventHeartBeat event will trigger when a heart receive a heartbeat.
+	// EventHeartBeat event will be triggered when a heart receives a heartbeat.
 	EventHeartBeat = "HEART_BEAT"
 )
 
-// Event just meats an event, you can use GetEventChannel method to receive subscribed events.
+// Event just means an event, you can use GetEventChannel method to receive subscribed events.
 type Event struct {
 	EventName  string    `json:"event_name"`
 	HeartKey   string    `json:"heart_key"`
