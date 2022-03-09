@@ -5,7 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/bunnier/heartfelt)](https://goreportcard.com/report/github.com/bunnier/heartfelt)
 [![Go Reference](https://pkg.go.dev/badge/github.com/bunnier/heartfelt.svg)](https://pkg.go.dev/github.com/bunnier/heartfelt)
 
-A high performance heartbeat watching manager.
+A high performance heartbeat watcher.
 
 ## Algorithm
 
@@ -24,6 +24,7 @@ func (hub *HeartHub) GetEventChannel() <-chan *Event
 func (hub *HeartHub) Remove(key string) error
 func (hub *HeartHub) Close()
 ```
+
 Example
 
 ```go
@@ -46,7 +47,7 @@ func main() {
 	)
 	eventCh := heartHub.GetEventChannel() // Events will be sent to this channel later.
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15) // exit context
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15) // For exit this example.
 	defer cancel()
 
 	// startFakeServices will start 10000 fake services, each service make heartbeat in 200ms regularly.
@@ -57,7 +58,7 @@ func main() {
 	for {
 		select {
 		case event := <-eventCh:
-			// The special service cheking will be stop after timeout or heartHub.Remove(key) be called manually.
+			// The special service checking will be stop after timeout or heartHub.Remove(key) be called manually.
 			log.Default().Printf("received an event: heartKey=%s eventName=%s, lastBeatTime=%d, eventTime=%d, foundTime=%d",
 				event.HeartKey, event.EventName, event.BeatTime.UnixMilli(), event.EventTime.UnixMilli(), event.EventTime.UnixMilli()-event.BeatTime.UnixMilli())
 		case <-ctx.Done():
@@ -82,7 +83,7 @@ func startFakeServices(ctx context.Context, heartHub *heartfelt.HeartHub, servic
 		}
 
 		// Each goroutine below represents a service.
-		key := strconv.Itoa(i) // convert index to the service key
+		key := strconv.Itoa(i)
 		go func() {
 			for {
 				select {

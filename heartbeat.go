@@ -139,9 +139,9 @@ func (parallelism *heartHubParallelism) startTimeoutCheck() {
 				parallelism.beatsLink.pop() // Pop the timeout heartbeat.
 				if firstBeat.disposable {
 					delete(parallelism.hearts, firstBeat.heart.key) // Remove the heart from the hearts map.
-					beatsPool.Put(firstBeat)                        // Clean beat and then put back to heartbeat pool.
+					beatsPool.Put(firstBeat)                        // Clean the beat and then put it back to heartbeat pool.
 				} else {
-					// Put it to beatlist directly instead of beatChSignal, otherwise might have deadlock.
+					// Put it to the beatlist directly instead of beatChSignal, otherwise might have deadlock.
 					// Reuse firstBeat here.
 					firstBeat.time = now
 					parallelism.beatsLink.push(firstBeat) // push this new beat

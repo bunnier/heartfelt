@@ -7,7 +7,7 @@ type beatsLink struct {
 	tailBeat *beat
 }
 
-// remove a beat from link.
+// remove a beat from this link.
 func (link *beatsLink) remove(b *beat) bool {
 	if b == nil {
 		return false
@@ -31,7 +31,7 @@ func (link *beatsLink) remove(b *beat) bool {
 	return true
 }
 
-// push a beat to tail of the link.
+// push a beat to the tail of this link.
 func (link *beatsLink) push(b *beat) bool {
 	if b == nil {
 		return false
@@ -48,14 +48,14 @@ func (link *beatsLink) push(b *beat) bool {
 	return true
 }
 
-// pop a beat from head of the link.
+// pop a beat from the head of this link.
 func (link *beatsLink) pop() *beat {
 	b := link.headBeat
 	link.remove(b)
 	return b
 }
 
-// peek the head of the link.
+// peek the head of this link.
 func (link *beatsLink) peek() *beat {
 	return link.headBeat
 }
