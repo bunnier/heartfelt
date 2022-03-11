@@ -57,7 +57,7 @@ type heart struct {
 type beat struct {
 	heart      *heart    // target heart
 	time       time.Time // beaten time
-	disposable bool      // set to true for auto removing the key from heartbut after timeout.
+	disposable bool      // set to true for auto removing the key from heartHub after timeout.
 
 	prev *beat
 	next *beat
@@ -66,8 +66,8 @@ type beat struct {
 // beatChSignal is a signal will be pass to heartbeat handling goroutine by beatSignalCh.
 type beatChSignal struct {
 	key        string // target key
-	end        bool   // set to true to remove the key from heartbut.
-	disposable bool   // set to true for auto removing the key from heartbut after timeout.
+	end        bool   // set to true to remove the key from heartHub.
+	disposable bool   // set to true for auto removing the key from heartHub after timeout.
 }
 
 // beatsPool for reuse beats.
@@ -130,7 +130,7 @@ func (hub *HeartHub) getParallelism(key string) *heartHubParallelism {
 
 // Heartbeat will beat the heart of specified key.
 //   @key: the unique key of target service.
-//   @disposable: set to true for auto removing the key from heartbut after timeout.
+//   @disposable: set to true for auto removing the key from heartHub after timeout.
 func (hub *HeartHub) Heartbeat(key string, disposable bool) error {
 	parallelism := hub.getParallelism(key)
 
