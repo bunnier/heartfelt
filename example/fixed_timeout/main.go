@@ -12,7 +12,7 @@ import (
 func main() {
 	// FixedTimeoutHeartHub is a heartbeat watcher of fixed timeout service.
 	heartHub := heartfelt.NewFixedTimeoutHeartHub(
-		time.Second, // Timeout is 1s.
+		time.Second, // Timeout duration is 1s.
 		heartfelt.WithDegreeOfParallelismOption(2),
 	)
 	eventCh := heartHub.GetEventChannel() // Events will be sent to this channel later.
@@ -29,8 +29,8 @@ func main() {
 		select {
 		case event := <-eventCh:
 			// The special service checking will be stop after timeout or heartHub.Remove(key) be called manually.
-			log.Default().Printf("received an event: heartKey=%s eventName=%s, lastBeatTime=%d, eventTime=%d, foundTime=%d",
-				event.HeartKey, event.EventName, event.BeatTime.UnixMilli(), event.EventTime.UnixMilli(), event.EventTime.UnixMilli()-event.BeatTime.UnixMilli())
+			log.Default().Printf("received an event: heartKey=%s eventName=%s, timeoutTime=%d, eventTime=%d, offset=%dms",
+				event.HeartKey, event.EventName, event.TimeoutTime.UnixMilli(), event.EventTime.UnixMilli(), event.EventTime.Sub(event.TimeoutTime)/time.Millisecond)
 		case <-ctx.Done():
 			heartHub.Close()
 			return

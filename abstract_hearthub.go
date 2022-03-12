@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+var _ HeartHub = (*abstractHeartHub)(nil)
+var _ DynamicTimeoutHearthub = (*abstractHeartHub)(nil)
+
 // abstractHeartHub is a abstract implementation of hearthub.
 type abstractHeartHub struct {
 	logger      Logger
@@ -19,9 +22,10 @@ type abstractHeartHub struct {
 	// In extreme cases, it may have large number of timeout heartbeats.
 	// For avoid the timeout handle goroutine occupy much time,
 	// we use batchPopThreshold to control maximum number of a batch.
-	batchPopThreshold int
-	beatChBufferSize  int
-	timeout           time.Duration
+	batchPopThreshold     int
+	beatChBufferSize      int
+	defaultTimeout        time.Duration
+	supportDynamicTimeout bool
 
 	subscribedEvents map[string]struct{}
 	eventCh          chan *Event
@@ -29,19 +33,6 @@ type abstractHeartHub struct {
 	// More parallelisms mean more parallel capabilities.
 	// A heartHubParallelism manages a part of hearts which are handled in same goroutines group.
 	parallelisms []*heartHubParallelism
-}
-
-// heartHubParallelism manages a part of hearts which are handled in same goroutines group.
-type heartHubParallelism struct {
-	id       int
-	heartHub *abstractHeartHub
-
-	beatsRepo beatsRepository // beatsRepo stores all of alive(no timeout) heartbeats in the heartHubParallelism.
-
-	// When beatsLink is empty, cond will be used to waiting heartbeat.
-	// When modify beatsLink, cond.L will be used to doing mutual exclusion.
-	cond         *sync.Cond
-	beatSignalCh chan beatChSignal // for passing heartbeat signal to heartbeat handling goroutine.
 }
 
 // beatsRepository stores all of alive(no timeout) heartbeats in the heartHubParallelism.
@@ -55,10 +46,11 @@ type beatsRepository interface {
 
 // beat means a heartbeat.
 type beat struct {
-	key        string    // target key
-	time       time.Time // beaten time
-	firstTime  time.Time // first beaten time
-	disposable bool      // set to true for auto removing the key from heartHub after timeout.
+	key         string        // target key
+	timeout     time.Duration // timeout duration
+	timeoutTime time.Time     // beaten time
+	firstTime   time.Time     // first beaten time
+	disposable  bool          // set to true for auto removing the key from heartHub after timeout.
 }
 
 // beatChSignal is a signal will be pass to heartbeat handling goroutine by beatSignalCh.
@@ -66,6 +58,7 @@ type beatChSignal struct {
 	key        string // target key
 	end        bool   // set to true to remove the key from heartHub.
 	disposable bool   // set to true for auto removing the key from heartHub after timeout.
+	timeout    time.Duration
 }
 
 // beatsPool for reuse beats.
@@ -76,15 +69,16 @@ var beatsPool sync.Pool = sync.Pool{
 }
 
 // newAbstractHeartHub will make a AbstractHeartHub which is the api entrance of this package.
-func newAbstractHeartHub(repoFactory func() beatsRepository, options ...heartHubOption) *abstractHeartHub {
+func newAbstractHeartHub(supportDynamicTimeout bool, repoFactory func() beatsRepository, options ...heartHubOption) *abstractHeartHub {
 	hub := &abstractHeartHub{
-		logger:            newDefaultLogger(),
-		verboseInfo:       false,
-		ctx:               nil,
-		ctxCancelFn:       nil,
-		batchPopThreshold: 100,
-		beatChBufferSize:  100,
-		timeout:           0,
+		logger:                newDefaultLogger(),
+		verboseInfo:           false,
+		ctx:                   nil,
+		ctxCancelFn:           nil,
+		batchPopThreshold:     100,
+		beatChBufferSize:      100,
+		defaultTimeout:        0,
+		supportDynamicTimeout: supportDynamicTimeout,
 		subscribedEvents: map[string]struct{}{
 			EventTimeout: {},
 		},
@@ -127,28 +121,59 @@ func (hub *abstractHeartHub) getParallelism(key string) *heartHubParallelism {
 // This method will auto re-watch the key from heartHub after timeout.
 //   @key: the unique key of target service.
 func (hub *abstractHeartHub) Heartbeat(key string) error {
-	parallelism := hub.getParallelism(key)
-
 	select {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		parallelism.heartbeat(key, false, false)
+		hub.getParallelism(key).heartbeat(key, false, false, hub.defaultTimeout)
 		return nil
 	}
 }
 
-// Heartbeat will beat the heart of specified key.
+// DisposableHeartbeat will beat the heart of specified key.
 // This method will auto remove the key from heartHub after timeout.
 //   @key: the unique key of target service.
 func (hub *abstractHeartHub) DisposableHeartbeat(key string) error {
-	parallelism := hub.getParallelism(key)
+	select {
+	case <-hub.ctx.Done():
+		return ErrHubClosed
+	default:
+		hub.getParallelism(key).heartbeat(key, false, true, hub.defaultTimeout)
+		return nil
+	}
+}
+
+// HeartbeatWithTimeout will beat the heart of specified key.
+// This method will auto re-watch the key from heartHub after timeout.
+//   @key: the unique key of target service.
+//   @timeout: the timeout duration after this heartbeat.
+func (hub *abstractHeartHub) HeartbeatWithTimeout(key string, timeout time.Duration) error {
+	if !hub.supportDynamicTimeout {
+		return ErrDynamicNotSupported
+	}
 
 	select {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		parallelism.heartbeat(key, false, true)
+		hub.getParallelism(key).heartbeat(key, false, true, timeout)
+		return nil
+	}
+}
+
+// DisposableHeartbeatWithTimeout will beat the heart of specified key.
+// This method will auto remove the key from heartHub after timeout.
+//   @timeout: the timeout duration after this heartbeat.
+func (hub *abstractHeartHub) DisposableHeartbeatWithTimeout(key string, timeout time.Duration) error {
+	if !hub.supportDynamicTimeout {
+		return ErrDynamicNotSupported
+	}
+
+	select {
+	case <-hub.ctx.Done():
+		return ErrHubClosed
+	default:
+		hub.getParallelism(key).heartbeat(key, false, true, timeout)
 		return nil
 	}
 }
@@ -162,7 +187,7 @@ func (hub *abstractHeartHub) Remove(key string) error {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		parallelism.heartbeat(key, true, true)
+		parallelism.heartbeat(key, true, true, 0)
 		return nil
 	}
 }
@@ -193,12 +218,12 @@ const (
 
 // Event just means an event, you can use GetEventChannel method to receive subscribed events.
 type Event struct {
-	EventName  string    `json:"event_name"`
-	HeartKey   string    `json:"heart_key"`
-	JoinTime   time.Time `json:"join_time"`  // JoinTime is register time of the key.
-	EventTime  time.Time `json:"event_time"` // Event trigger time.
-	BeatTime   time.Time `json:"beat_time"`
-	Disposable bool      `json:"disposable"`
+	EventName   string    `json:"event_name"`
+	HeartKey    string    `json:"heart_key"`
+	JoinTime    time.Time `json:"join_time"`  // JoinTime is register time of the key.
+	EventTime   time.Time `json:"event_time"` // Event trigger time.
+	TimeoutTime time.Time `json:"beat_time"`
+	Disposable  bool      `json:"disposable"`
 }
 
 func (hub *abstractHeartHub) sendEvent(eventName string, beat *beat, eventTime time.Time) bool {
@@ -207,12 +232,12 @@ func (hub *abstractHeartHub) sendEvent(eventName string, beat *beat, eventTime t
 	}
 
 	event := &Event{
-		EventName:  eventName,
-		HeartKey:   beat.key,
-		JoinTime:   beat.firstTime,
-		EventTime:  eventTime,
-		BeatTime:   beat.time,
-		Disposable: beat.disposable,
+		EventName:   eventName,
+		HeartKey:    beat.key,
+		JoinTime:    beat.firstTime,
+		EventTime:   eventTime,
+		TimeoutTime: beat.timeoutTime,
+		Disposable:  beat.disposable,
 	}
 
 	select {

@@ -6,6 +6,19 @@ import (
 	"time"
 )
 
+// heartHubParallelism manages a part of hearts which are handled in same goroutines group.
+type heartHubParallelism struct {
+	id       int
+	heartHub *abstractHeartHub
+
+	beatsRepo beatsRepository // beatsRepo stores all of alive(no timeout) heartbeats in the heartHubParallelism.
+
+	// When beatsLink is empty, cond will be used to waiting heartbeat.
+	// When modify beatsLink, cond.L will be used to doing mutual exclusion.
+	cond         *sync.Cond
+	beatSignalCh chan beatChSignal // for passing heartbeat signal to heartbeat handling goroutine.
+}
+
 func newHeartHubParallelism(id int, hub *abstractHeartHub, beatsRepo beatsRepository) *heartHubParallelism {
 	return &heartHubParallelism{
 		id:           id,
@@ -16,11 +29,12 @@ func newHeartHubParallelism(id int, hub *abstractHeartHub, beatsRepo beatsReposi
 	}
 }
 
-func (parallelism *heartHubParallelism) heartbeat(key string, end bool, disposable bool) {
+func (parallelism *heartHubParallelism) heartbeat(key string, end bool, disposable bool, timeout time.Duration) {
 	parallelism.beatSignalCh <- beatChSignal{
 		key:        key,
 		end:        end,
 		disposable: disposable,
+		timeout:    timeout,
 	}
 }
 
@@ -49,7 +63,9 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 				// So it is a beat signal.
 				beat := beatsPool.Get().(*beat)
 				beat.key = signal.key
-				beat.time = now
+				beat.firstTime = now
+				beat.timeout = signal.timeout
+				beat.timeoutTime = now.Add(beat.timeout)
 				beat.disposable = signal.disposable
 				oldBeat := parallelism.beatsRepo.push(beat) // push this new beat
 
@@ -108,22 +124,21 @@ func (parallelism *heartHubParallelism) startTimeoutCheck() {
 					break
 				}
 
-				if nextTimeoutDuration = parallelism.heartHub.timeout - time.Since(firstBeat.time); nextTimeoutDuration > 0 {
+				now := time.Now()
+				if nextTimeoutDuration = firstBeat.timeoutTime.Sub(now); nextTimeoutDuration > 0 {
 					break
 				}
 
 				// time out workflow...
-				now := time.Now()
-
 				if parallelism.heartHub.verboseInfo {
 					parallelism.heartHub.logger.Info(fmt.Sprintf(
-						"found a timeout heart, parallelismId: %d, key: %s, find time: %d, join time: %d, last beat: %d, time offset: %d",
+						"found a timeout heart, parallelismId: %d, key: %s, find time: %d, join time: %d, timeout time: %d, time offset: %d",
 						parallelism.id,
 						firstBeat.key,
 						now.UnixMilli(),
 						firstBeat.firstTime.UnixMilli(),
-						firstBeat.time.UnixMilli(),
-						now.UnixMilli()-firstBeat.time.UnixMilli()))
+						firstBeat.timeoutTime.UnixMilli(),
+						now.UnixMilli()-firstBeat.timeoutTime.UnixMilli()))
 				}
 
 				parallelism.heartHub.sendEvent(EventTimeout, firstBeat, now)
@@ -135,7 +150,7 @@ func (parallelism *heartHubParallelism) startTimeoutCheck() {
 				} else {
 					// Put it to the beatlist directly instead of beatChSignal, otherwise might have deadlock.
 					// Reuse firstBeat here.
-					firstBeat.time = now
+					firstBeat.timeoutTime = now.Add(firstBeat.timeout)
 					parallelism.beatsRepo.push(firstBeat)
 				}
 

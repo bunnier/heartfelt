@@ -185,8 +185,8 @@ func Test_hearthubOptions(t *testing.T) {
 		t.Errorf("hearthub hearthubOptions timeout want %v get %v", eventBufferSize, cap(eventCh))
 	}
 
-	if timeout != heartHub.timeout {
-		t.Errorf("hearthub hearthubOptions event buffer size want %v get %v", timeout, int(heartHub.timeout))
+	if timeout != heartHub.defaultTimeout {
+		t.Errorf("hearthub hearthubOptions event buffer size want %v get %v", timeout, int(heartHub.defaultTimeout))
 	}
 
 	if degreeOfParallelism != len(heartHub.parallelisms) {

@@ -6,10 +6,10 @@ import (
 
 type heartHubOption func(hub *abstractHeartHub)
 
-// withTimeoutOption can set timeout to the hearthub.
-func withTimeoutOption(timeout time.Duration) heartHubOption {
+// WithDefaultTimeoutOption can set timeout to the hearthub.
+func WithDefaultTimeoutOption(timeout time.Duration) heartHubOption {
 	return func(hub *abstractHeartHub) {
-		hub.timeout = timeout
+		hub.defaultTimeout = timeout
 	}
 }
 
