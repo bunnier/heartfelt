@@ -20,7 +20,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15) // For exit this example.
 	defer cancel()
 
-	// startFakeServices will start 10000 fake services, each service make heartbeat in 200ms regularly.
+	// startFakeServices will start 10000 fake services, each service make heartbeat in 500ms regularly.
 	// But these services: index in {67, 120, 100, 3456, 4000, 5221, 7899, 9999} will stop work after {its_id} ms.
 	// Fortunately, heartHub will catch them all ^_^
 	go startFakeServices(ctx, heartHub, 10000, []int{67, 120, 100, 3456, 4000, 5221, 7899, 9999})
