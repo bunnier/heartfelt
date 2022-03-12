@@ -16,7 +16,22 @@ func Test_beatsUniquePriorityQueue_isEmpty(t *testing.T) {
 		fields fields
 		want   bool
 	}{
-		// TODO: Add test cases.
+		{
+			name: "isEmpty_empty",
+			fields: fields{
+				lastBeatsMap: make(map[string]int),
+				minHeap:      heap{make([]*beat, 0)},
+			},
+			want: true,
+		},
+		{
+			name: "isEmpty_notEmpty",
+			fields: fields{
+				lastBeatsMap: make(map[string]int),
+				minHeap:      heap{items: []*beat{{}}},
+			},
+			want: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -36,12 +51,28 @@ func Test_beatsUniquePriorityQueue_peek(t *testing.T) {
 		lastBeatsMap map[string]int
 		minHeap      heap
 	}
+	b := &beat{}
 	tests := []struct {
 		name   string
 		fields fields
 		want   *beat
 	}{
-		// TODO: Add test cases.
+		{
+			name: "peek_empty",
+			fields: fields{
+				lastBeatsMap: make(map[string]int),
+				minHeap:      heap{make([]*beat, 0)},
+			},
+			want: nil,
+		},
+		{
+			name: "peek_notEmpty",
+			fields: fields{
+				lastBeatsMap: make(map[string]int),
+				minHeap:      heap{[]*beat{b}},
+			},
+			want: b,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -56,31 +87,6 @@ func Test_beatsUniquePriorityQueue_peek(t *testing.T) {
 	}
 }
 
-func Test_beatsUniquePriorityQueue_pop(t *testing.T) {
-	type fields struct {
-		lastBeatsMap map[string]int
-		minHeap      heap
-	}
-	tests := []struct {
-		name   string
-		fields fields
-		want   *beat
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			queue := &beatsUniquePriorityQueue{
-				lastBeatsMap: tt.fields.lastBeatsMap,
-				minHeap:      tt.fields.minHeap,
-			}
-			if got := queue.pop(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("beatsUniquePriorityQueue.pop() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func Test_beatsUniquePriorityQueue_push(t *testing.T) {
 	type fields struct {
 		lastBeatsMap map[string]int
@@ -89,13 +95,38 @@ func Test_beatsUniquePriorityQueue_push(t *testing.T) {
 	type args struct {
 		b *beat
 	}
+	b1 := &beat{key: "service1"}
+	b2 := &beat{key: "service2"}
 	tests := []struct {
 		name   string
 		fields fields
 		args   args
 		want   *beat
 	}{
-		// TODO: Add test cases.
+		{
+			name: "push_notExist",
+			fields: fields{
+				lastBeatsMap: make(map[string]int),
+				minHeap:      heap{make([]*beat, 0)},
+			},
+			args: args{b1},
+		},
+		{
+			name: "push_exist",
+			fields: fields{
+				lastBeatsMap: map[string]int{"service1": 0},
+				minHeap:      heap{[]*beat{b1}},
+			},
+			args: args{b1},
+		},
+		{
+			name: "push_existOther",
+			fields: fields{
+				lastBeatsMap: map[string]int{"service2": 1},
+				minHeap:      heap{[]*beat{b2}},
+			},
+			args: args{b1},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -103,8 +134,16 @@ func Test_beatsUniquePriorityQueue_push(t *testing.T) {
 				lastBeatsMap: tt.fields.lastBeatsMap,
 				minHeap:      tt.fields.minHeap,
 			}
-			if got := queue.push(tt.args.b); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("beatsUniquePriorityQueue.push() = %v, want %v", got, tt.want)
+
+			if got := queue.push(tt.args.b); got != nil && got.key != tt.args.b.key {
+				t.Errorf("beatsUniquePriorityQueue.push() return = %v, want %v", got.key, tt.args.b.key)
+			}
+
+			if index, ok := queue.lastBeatsMap[tt.args.b.key]; !ok {
+				t.Errorf("beatsUniquePriorityQueue.push() map key not found")
+				if queue.minHeap.items[index] != tt.args.b {
+					t.Errorf("beatsUniquePriorityQueue.push() map value not equal")
+				}
 			}
 		})
 	}
@@ -118,13 +157,31 @@ func Test_beatsUniquePriorityQueue_remove(t *testing.T) {
 	type args struct {
 		key string
 	}
+	b1 := &beat{key: "service1"}
 	tests := []struct {
 		name   string
 		fields fields
 		args   args
 		want   *beat
 	}{
-		// TODO: Add test cases.
+		{
+			name: "remove_empty",
+			fields: fields{
+				lastBeatsMap: make(map[string]int),
+				minHeap:      heap{make([]*beat, 0)},
+			},
+			args: args{"service1"},
+			want: nil,
+		},
+		{
+			name: "remove_notEmpty",
+			fields: fields{
+				lastBeatsMap: map[string]int{"service1": 0},
+				minHeap:      heap{[]*beat{b1}},
+			},
+			args: args{"service1"},
+			want: b1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

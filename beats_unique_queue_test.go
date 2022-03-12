@@ -10,7 +10,6 @@ func Test_beatsUniqueQueue_isEmpty(t *testing.T) {
 		lastBeatsMap map[string]*linkNode
 		link         doublyLink
 	}
-
 	n := &linkNode{}
 	tests := []struct {
 		name   string
@@ -173,7 +172,9 @@ func Test_beatsUniqueQueue_push(t *testing.T) {
 		{
 			name: "push_exist",
 			fields: fields{
-				lastBeatsMap: make(map[string]*linkNode),
+				lastBeatsMap: map[string]*linkNode{
+					"service1": n1,
+				},
 				link: doublyLink{
 					head: n1,
 					tail: n1,
