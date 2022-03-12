@@ -10,28 +10,24 @@ import (
 )
 
 func Test_heartbeats(t *testing.T) {
-	heartHub := NewHeartHub(
+	heartHub := NewFixedTimeoutHeartHub(
+		time.Millisecond*10,
 		WithDegreeOfParallelismOption(1),
-		WithTimeoutOption(time.Millisecond*10),
-	)
+	).(*abstractHeartHub)
+
 	defer heartHub.Close()
 
-	heartHub.Heartbeat("service1", true)
-	heartHub.Heartbeat("service2", true)
-	heartHub.Heartbeat("service3", false)
+	heartHub.DisposableHeartbeat("service1")
+	heartHub.DisposableHeartbeat("service2")
+	heartHub.Heartbeat("service3")
 
 	time.Sleep(time.Millisecond * 2) // Waiting for inner goroutine done.
 
 	heartHub.parallelisms[0].cond.L.Lock()
 
-	// Check hearts number.
-	if len(heartHub.parallelisms[0].hearts) != 3 {
-		t.Errorf("hearthub heartbeats hearts num error, want 3 get %v", len(heartHub.parallelisms[0].hearts))
-	}
-
 	// Check heartbeats number.
 	beatsCount := 0
-	tmpBeat := heartHub.parallelisms[0].beatsLink.headBeat
+	tmpBeat := heartHub.parallelisms[0].beatsRepo.(*beatsUniqueQueue).link.head
 	for tmpBeat != nil {
 		tmpBeat = tmpBeat.next
 		beatsCount++
@@ -42,7 +38,7 @@ func Test_heartbeats(t *testing.T) {
 	}
 
 	// Check disposable.
-	if heartHub.parallelisms[0].beatsLink.tailBeat.disposable {
+	if heartHub.parallelisms[0].beatsRepo.(*beatsUniqueQueue).link.tail.data.disposable {
 		t.Errorf("hearthub heartbeats disposable error, want true get false")
 	}
 
@@ -51,26 +47,25 @@ func Test_heartbeats(t *testing.T) {
 	time.Sleep(time.Millisecond * 11) // Waiting for timeout.
 
 	// Check disposable result.
-	if len(heartHub.parallelisms[0].hearts) != 1 {
-		t.Errorf("hearthub heartbeats disposable error, want 1 get %v", len(heartHub.parallelisms[0].hearts))
+	if len(heartHub.parallelisms[0].beatsRepo.(*beatsUniqueQueue).lastBeatsMap) != 1 {
+		t.Errorf("hearthub heartbeats disposable error, want 1 get %v", len(heartHub.parallelisms[0].beatsRepo.(*beatsUniqueQueue).lastBeatsMap))
 	}
 
-	if _, ok := heartHub.parallelisms[0].hearts["service3"]; !ok {
+	if _, ok := heartHub.parallelisms[0].beatsRepo.(*beatsUniqueQueue).lastBeatsMap["service3"]; !ok {
 		t.Errorf("hearthub heartbeats disposable error, service3 is not existed")
 	}
 }
 
 func Test_timeoutCheck(t *testing.T) {
-	heartHub := NewHeartHub(
+	heartHub := NewFixedTimeoutHeartHub(
+		time.Millisecond*10,
 		WithDegreeOfParallelismOption(1),
-		WithTimeoutOption(time.Millisecond*10),
 	)
 	defer heartHub.Close()
 	eventCh := heartHub.GetEventChannel()
 
-	// disposable=true
-	heartHub.Heartbeat("service1", true)
-	time.Sleep(time.Millisecond * 11) // Waiting for timeout.
+	heartHub.DisposableHeartbeat("service1")
+	time.Sleep(time.Millisecond * 12) // Waiting for timeout.
 
 	select {
 	case event := <-eventCh:
@@ -81,16 +76,15 @@ func Test_timeoutCheck(t *testing.T) {
 		t.Errorf("hearthub timeout checking error event1, should have an event")
 	}
 
-	time.Sleep(time.Millisecond * 11) // Waiting for timeout.
+	time.Sleep(time.Millisecond * 12) // Waiting for timeout.
 	select {
 	case event := <-eventCh:
 		t.Errorf("hearthub timeout checking error, should be empty but get %v", event.EventName)
 	default:
 	}
 
-	// disposable=false
-	heartHub.Heartbeat("service1", false)
-	time.Sleep(time.Millisecond * 22) // Waiting for timeout.
+	heartHub.Heartbeat("service1")
+	time.Sleep(time.Millisecond * 24) // Waiting for timeout.
 	for i := 0; i < 2; i++ {
 		select {
 		case event := <-eventCh:
@@ -104,7 +98,7 @@ func Test_timeoutCheck(t *testing.T) {
 
 	// Remove key.
 	heartHub.Remove("service1")
-	time.Sleep(time.Millisecond * 11) // Waiting for timeout.
+	time.Sleep(time.Millisecond * 12) // Waiting for timeout.
 	select {
 	case event := <-eventCh:
 		t.Errorf("hearthub timeout checking error, should be empty but get %v", event.EventName)
@@ -113,9 +107,9 @@ func Test_timeoutCheck(t *testing.T) {
 }
 
 func Test_workflow(t *testing.T) {
-	heartHub := NewHeartHub(
-		WithDegreeOfParallelismOption(1),
-		WithTimeoutOption(time.Millisecond*200),
+	heartHub := NewFixedTimeoutHeartHub(
+		time.Millisecond*200,
+		WithDegreeOfParallelismOption(2),
 	)
 	eventCh := heartHub.GetEventChannel()
 
@@ -145,7 +139,7 @@ OVER:
 }
 
 // startFakeServices will start fake services.
-func startFakeServices(ctx context.Context, heartHub *HeartHub, serviceNum int, stuckIds []int) {
+func startFakeServices(ctx context.Context, heartHub HeartHub, serviceNum int, stuckIds []int) {
 	// These ids will stuck later.
 	stuckIdsMap := make(map[int]struct{})
 	for _, v := range stuckIds {
@@ -165,7 +159,7 @@ func startFakeServices(ctx context.Context, heartHub *HeartHub, serviceNum int, 
 				case <-ctx.Done():
 					return
 				default:
-					heartHub.Heartbeat(key, true)
+					heartHub.DisposableHeartbeat(key)
 					time.Sleep(100 * time.Millisecond)
 				}
 			}
@@ -178,12 +172,12 @@ func Test_hearthubOptions(t *testing.T) {
 	eventBufferSize := 10
 	degreeOfParallelism := 10
 
-	heartHub := NewHeartHub(
-		WithTimeoutOption(timeout),
+	heartHub := NewFixedTimeoutHeartHub(
+		timeout,
 		WithEventBufferSizeOption(eventBufferSize),
 		WithDegreeOfParallelismOption(degreeOfParallelism),
 		WithSubscribeEventNamesOption(EventHeartBeat),
-	)
+	).(*abstractHeartHub)
 	defer heartHub.Close()
 	eventCh := heartHub.GetEventChannel()
 

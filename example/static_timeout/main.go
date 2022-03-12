@@ -10,10 +10,10 @@ import (
 )
 
 func main() {
-	// HeartHub is the api entrance of this package.
-	heartHub := heartfelt.NewHeartHub(
+	// FixedTimeoutHeartHub is a heartbeat watcher of fixed timeout service.
+	heartHub := heartfelt.NewFixedTimeoutHeartHub(
+		time.Second, // Timeout is 1s.
 		heartfelt.WithDegreeOfParallelismOption(2),
-		heartfelt.WithTimeoutOption(time.Second),
 	)
 	eventCh := heartHub.GetEventChannel() // Events will be sent to this channel later.
 
@@ -39,7 +39,7 @@ func main() {
 }
 
 // startFakeServices will start fake services.
-func startFakeServices(ctx context.Context, heartHub *heartfelt.HeartHub, serviceNum int, stuckIds []int) {
+func startFakeServices(ctx context.Context, heartHub heartfelt.HeartHub, serviceNum int, stuckIds []int) {
 	// These ids will stuck later.
 	stuckIdsMap := make(map[int]struct{})
 	for _, v := range stuckIds {
@@ -61,9 +61,7 @@ func startFakeServices(ctx context.Context, heartHub *heartfelt.HeartHub, servic
 					return
 				default:
 					// Send heartbeat..
-					// Second parameter means auto removing the key from heartHub
-					// after timeout, otherwise it will be watched again.
-					heartHub.Heartbeat(key, true)
+					heartHub.DisposableHeartbeat(key)
 					time.Sleep(500 * time.Millisecond)
 				}
 			}

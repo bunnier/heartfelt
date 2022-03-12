@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="SmKWZeOlkfU7Dyu4ne95" name="Page-1">
-        <mxGraphModel dx="820" dy="1019" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+        <mxGraphModel dx="1815" dy="605" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -136,6 +136,9 @@
                         <mxPoint x="508" y="528.308" as="sourcePoint"/>
                         <mxPoint x="533.2839999999999" y="528.3299999999999" as="targetPoint"/>
                     </mxGeometry>
+                </mxCell>
+                <mxCell id="102" value="Fixed timeout heartbeats watcher" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="250" y="210" width="390" height="50" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>

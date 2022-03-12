@@ -9,23 +9,13 @@ A high performance heartbeat watcher.
 
 ## Algorithm
 
-![Algorithm](./docs/algorithm.png)
+### 1. Fixed timeout watcher
+
+![Algorithm](./docs/fixedtime_algorithm.png)
 
 ## Usage
 
-Core [Apis](https://pkg.go.dev/github.com/bunnier/heartfelt)
-
-```go
-type HeartHub
-func NewHeartHub(options ...heartHubOption) *HeartHub
-
-func (hub *HeartHub) Heartbeat(key string, disposable bool) error
-func (hub *HeartHub) GetEventChannel() <-chan *Event
-func (hub *HeartHub) Remove(key string) error
-func (hub *HeartHub) Close()
-```
-
-Example
+### Example 1: Fixed timeout watcher
 
 ```go
 package main
@@ -40,10 +30,10 @@ import (
 )
 
 func main() {
-	// HeartHub is the api entrance of this package.
-	heartHub := heartfelt.NewHeartHub(
+	// FixedTimeoutHeartHub is a heartbeat watcher of fixed timeout service.
+	heartHub := heartfelt.NewFixedTimeoutHeartHub(
+		time.Second, // Timeout is 1s.
 		heartfelt.WithDegreeOfParallelismOption(2),
-		heartfelt.WithTimeoutOption(time.Second),
 	)
 	eventCh := heartHub.GetEventChannel() // Events will be sent to this channel later.
 
@@ -69,7 +59,7 @@ func main() {
 }
 
 // startFakeServices will start fake services.
-func startFakeServices(ctx context.Context, heartHub *heartfelt.HeartHub, serviceNum int, stuckIds []int) {
+func startFakeServices(ctx context.Context, heartHub heartfelt.HeartHub, serviceNum int, stuckIds []int) {
 	// These ids will stuck later.
 	stuckIdsMap := make(map[int]struct{})
 	for _, v := range stuckIds {
@@ -91,9 +81,7 @@ func startFakeServices(ctx context.Context, heartHub *heartfelt.HeartHub, servic
 					return
 				default:
 					// Send heartbeat..
-					// Second parameter means auto removing the key from heartHub
-					// after timeout, otherwise it will be watched again.
-					heartHub.Heartbeat(key, true)
+					heartHub.DisposableHeartbeat(key)
 					time.Sleep(500 * time.Millisecond)
 				}
 			}
