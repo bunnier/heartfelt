@@ -11,7 +11,7 @@ type beatsUniquePriorityQueue struct {
 func newBeatsUniquePriorityQueue() beatsRepository {
 	return &beatsUniquePriorityQueue{
 		lastBeatsMap: make(map[string]int),
-		minHeap:      heap{min: true},
+		minHeap:      heap{},
 	}
 }
 
@@ -54,34 +54,33 @@ func (queue *beatsUniquePriorityQueue) remove(key string) *beat {
 // heap is a heap of heartbeats
 type heap struct {
 	items []*beat
-	min   bool
 }
 
-func (h heap) isEmpty() bool {
+func (h *heap) isEmpty() bool {
 	return len(h.items) == 0
 }
 
-func (h heap) peek() *beat {
+func (h *heap) peek() *beat {
 	if len(h.items) == 0 {
 		return nil
 	}
 	return h.items[0]
 }
 
-func (h heap) pop() *beat {
+func (h *heap) pop() *beat {
 	if len(h.items) == 0 {
 		return nil
 	}
 	return h.remove(0)
 }
 
-func (h heap) push(b *beat) int {
+func (h *heap) push(b *beat) int {
 	h.items = append(h.items, b)
 	index := len(h.items) - 1
 
 	for {
 		var parentIndex int
-		if parentIndex := (index - 1) / 2; parentIndex < 0 {
+		if parentIndex := (index - 1) / 2; parentIndex < 0 || parentIndex == index {
 			break
 		}
 
@@ -97,6 +96,36 @@ func (h heap) push(b *beat) int {
 	return index
 }
 
-func (h heap) remove(index int) *beat {
-	return nil
+func (h *heap) remove(index int) *beat {
+	if len(h.items) == 0 {
+		return nil
+	}
+
+	b := h.items[index]
+	h.items[index] = h.items[len(h.items)-1]
+	h.items = h.items[:len(h.items)-1]
+
+	for {
+		var minChildIndex int
+		if leftChildIndex := index*2 + 1; leftChildIndex >= len(h.items) {
+			break
+		} else {
+			minChildIndex = leftChildIndex
+			if rightChildIndex := leftChildIndex + 1; rightChildIndex < len(h.items) {
+				if h.items[leftChildIndex].timeoutTime.After(h.items[rightChildIndex].timeoutTime) {
+					minChildIndex = rightChildIndex
+				}
+			}
+		}
+
+		if h.items[index].timeoutTime.Before(h.items[minChildIndex].timeoutTime) {
+			break
+		}
+
+		// Swap with min child node.
+		h.items[minChildIndex], h.items[index] = h.items[index], h.items[minChildIndex]
+		index = minChildIndex
+	}
+
+	return b
 }
