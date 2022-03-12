@@ -11,7 +11,7 @@ type beatsUniquePriorityQueue struct {
 func newBeatsUniquePriorityQueue() beatsRepository {
 	return &beatsUniquePriorityQueue{
 		lastBeatsMap: make(map[string]int),
-		minHeap:      heap{},
+		minHeap:      heap{make([]*beat, 0)},
 	}
 }
 
