@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	// FixedTimeoutHeartHub is a heartbeat watcher of fixed timeout service.
+	// FixedTimeoutHeartHub is a heartbeats watcher of fixed timeout service.
 	heartHub := heartfelt.NewFixedTimeoutHeartHub(
 		time.Second, // Timeout duration is 1s.
 		heartfelt.WithDegreeOfParallelismOption(2),

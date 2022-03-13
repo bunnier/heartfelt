@@ -37,7 +37,7 @@ type HeartHub interface {
 	Close()
 }
 
-// NewFixedTimeoutHeartHub will make a fixed timeout heartHub watcher.
+// NewFixedTimeoutHeartHub will make a fixed timeout heartHub.
 func NewFixedTimeoutHeartHub(timeout time.Duration, options ...heartHubOption) HeartHub {
 	options = append(options, WithDefaultTimeoutOption(timeout))
 	return newAbstractHeartHub(
@@ -47,8 +47,8 @@ func NewFixedTimeoutHeartHub(timeout time.Duration, options ...heartHubOption) H
 	) // Implemented by unique queue.
 }
 
-// NewDynamicTimeoutHearthub will make a dynamic timeout heartHub watcher.
-func NewDynamicTimeoutHearthub(options ...heartHubOption) DynamicTimeoutHearthub {
+// NewDynamicTimeoutHeartHub will make a dynamic timeout heartHub.
+func NewDynamicTimeoutHeartHub(options ...heartHubOption) DynamicTimeoutHeartHub {
 	return newAbstractHeartHub(
 		true,
 		newBeatsUniquePriorityQueue,
@@ -56,8 +56,8 @@ func NewDynamicTimeoutHearthub(options ...heartHubOption) DynamicTimeoutHearthub
 	) // Implemented by unique priority queue.
 }
 
-// DynamicTimeoutHearthub is a dynamic timeout heartHub watcher
-type DynamicTimeoutHearthub interface {
+// DynamicTimeoutHeartHub is a dynamic timeout heartHub.
+type DynamicTimeoutHeartHub interface {
 	HeartHub
 
 	// Heartbeat will beat the heart of specified key.

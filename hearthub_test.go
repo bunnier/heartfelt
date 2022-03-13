@@ -122,7 +122,7 @@ func startFakeServices(ctx context.Context, heartHub HeartHub, serviceNum int, s
 }
 
 func Test_dynamicTimeoutWorkflow(t *testing.T) {
-	heartHub := NewDynamicTimeoutHearthub(
+	heartHub := NewDynamicTimeoutHeartHub(
 		WithDegreeOfParallelismOption(4),
 	)
 	defer heartHub.Close()
@@ -180,7 +180,7 @@ func Test_dynamicTimeoutWorkflow(t *testing.T) {
 }
 
 func Test_dynamicTimeoutParallelWorkflow(t *testing.T) {
-	heartHub := NewDynamicTimeoutHearthub(
+	heartHub := NewDynamicTimeoutHeartHub(
 		WithDegreeOfParallelismOption(1),
 	)
 	eventCh := heartHub.GetEventChannel()

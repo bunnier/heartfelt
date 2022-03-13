@@ -9,7 +9,7 @@ import (
 )
 
 var _ HeartHub = (*abstractHeartHub)(nil)
-var _ DynamicTimeoutHearthub = (*abstractHeartHub)(nil)
+var _ DynamicTimeoutHeartHub = (*abstractHeartHub)(nil)
 
 // abstractHeartHub is a abstract implementation of hearthub.
 type abstractHeartHub struct {

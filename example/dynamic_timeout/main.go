@@ -13,8 +13,8 @@ import (
 )
 
 func main() {
-	// DynamicTimeoutHearthub is a heartbeat watcher of dynamic timeout service.
-	heartHub := heartfelt.NewDynamicTimeoutHearthub(
+	// DynamicTimeoutHeartHub is a heartbeats watcher of dynamic timeout service.
+	heartHub := heartfelt.NewDynamicTimeoutHeartHub(
 		heartfelt.WithDegreeOfParallelismOption(1),
 	)
 	eventCh := heartHub.GetEventChannel() // Events will be sent to this channel later.

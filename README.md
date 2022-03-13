@@ -5,15 +5,15 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/bunnier/heartfelt)](https://goreportcard.com/report/github.com/bunnier/heartfelt)
 [![Go Reference](https://pkg.go.dev/badge/github.com/bunnier/heartfelt.svg)](https://pkg.go.dev/github.com/bunnier/heartfelt)
 
-A high performance heartbeat watcher.
+A high performance heartbeats watcher.
 
 ## Algorithm
 
-### 1. Fixed timeout watcher (LRU by queue)
+### 1. Fixed timeout heartbeats watcher (LRU by queue)
 
 ![Algorithm](./docs/fixed_timeout_algorithm.png)
 
-### 2. Dynamic timeout watcher (LRU by priority queue)
+### 2. Dynamic timeout heartbeats watcher (LRU by priority queue)
 
 ![Algorithm](./docs/dynamic_timeout_algorithm.png)
 
@@ -22,54 +22,20 @@ A high performance heartbeat watcher.
 Core Api
 
 ```go
-// NewFixedTimeoutHeartHub will make a fixed timeout heartHub watcher.
+// HeartHub is the api entrance of this package.
+type HeartHub interface
+
+// DynamicTimeoutHeartHub is a heartHub with dynamic timeout supported.
+type DynamicTimeoutHeartHub interface
+
+// NewFixedTimeoutHeartHub will make a fixed timeout heartHub.
 func NewFixedTimeoutHeartHub(timeout time.Duration, options ...heartHubOption) HeartHub
 
-// NewDynamicTimeoutHearthub will make a dynamic timeout heartHub watcher.
-func NewDynamicTimeoutHearthub(options ...heartHubOption) DynamicTimeoutHearthub
-
-// HeartHub is the api entrance of this package.
-type HeartHub interface {
-	// GetEventChannel return a channel for receiving subscribed events.
-	GetEventChannel() <-chan *Event
-
-	// Heartbeat will beat the heart of specified key.
-	// This method will auto re-watch the key from heartHub after timeout.
-	//   @key: the unique key of target service.
-	Heartbeat(key string) error
-
-	// Heartbeat will beat the heart of specified key.
-	// This method will auto remove the key from heartHub after timeout.
-	//   @key: the unique key of target service.
-	DisposableHeartbeat(key string) error
-
-	// Remove will stop watching the service of key from the heartHub.
-	//   @key: the unique key of target service.
-	Remove(key string) error
-
-	// Close will stop watch all service keys and release all goroutines.
-	Close()
-}
-
-// DynamicTimeoutHearthub is a dynamic timeout heartHub watcher
-type DynamicTimeoutHearthub interface {
-	HeartHub
-
-	// Heartbeat will beat the heart of specified key.
-	// This method will auto re-watch the key from heartHub after timeout.
-	//   @key: the unique key of target service.
-	//   @timeout: the timeout duration after this heartbeat.
-	HeartbeatWithTimeout(key string, timeout time.Duration) error
-
-	// Heartbeat will beat the heart of specified key.
-	// This method will auto remove the key from heartHub after timeout.
-	//   @key: the unique key of target service.
-	//   @timeout: the timeout duration after this heartbeat.
-	DisposableHeartbeatWithTimeout(key string, timeout time.Duration) error
-}
+// NewDynamicTimeoutHeartHub will make a dynamic timeout heartHub.
+func NewDynamicTimeoutHeartHub(options ...heartHubOption) DynamicTimeoutHeartHub
 ```
 
-### Example 1: Fixed timeout watcher
+### Example 1: Fixed timeout heartbeats watcher
 
 ```go
 package main
@@ -84,7 +50,7 @@ import (
 )
 
 func main() {
-	// FixedTimeoutHeartHub is a heartbeat watcher of fixed timeout service.
+	// FixedTimeoutHeartHub is a heartbeats watcher of fixed timeout service.
 	heartHub := heartfelt.NewFixedTimeoutHeartHub(
 		time.Second, // Timeout duration is 1s.
 		heartfelt.WithDegreeOfParallelismOption(2),
@@ -158,7 +124,7 @@ Output
 2022/03/13 14:35:29 received an event: heartKey=9999 eventName=TIME_OUT, timeout duration=1000, timeoutTime=1647153329198, eventTime=1647153329198, offset=0ms
 ```
 
-### Example 2: Dynamic timeout watcher
+### Example 2: Dynamic timeout heartbeats watcher
 
 ```go
 package main
@@ -176,8 +142,8 @@ import (
 )
 
 func main() {
-	// DynamicTimeoutHearthub is a heartbeat watcher of dynamic timeout service.
-	heartHub := heartfelt.NewDynamicTimeoutHearthub(
+	// DynamicTimeoutHeartHub is a heartbeats watcher of dynamic timeout service.
+	heartHub := heartfelt.NewDynamicTimeoutHeartHub(
 		heartfelt.WithDegreeOfParallelismOption(1),
 	)
 	eventCh := heartHub.GetEventChannel() // Events will be sent to this channel later.
