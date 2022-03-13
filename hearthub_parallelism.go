@@ -67,8 +67,8 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 				beat.timeout = signal.timeout
 				beat.timeoutTime = now.Add(beat.timeout)
 				beat.disposable = signal.disposable
-				oldBeat := parallelism.beatsRepo.push(beat) // push this new beat
 
+				oldBeat := parallelism.beatsRepo.push(beat) // push this new beat
 				if oldBeat != nil {
 					beatsPool.Put(oldBeat)
 				}

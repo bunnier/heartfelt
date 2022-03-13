@@ -60,6 +60,9 @@ func (queue *beatsUniqueQueue) push(b *beat) *beat {
 	} else {
 		node = queue.nodePool.Get().(*linkNode) // Reuse the *linkNode.
 		node.data = b
+		node.prev = nil
+		node.next = nil
+
 		queue.lastBeatsMap[b.key] = node
 	}
 
