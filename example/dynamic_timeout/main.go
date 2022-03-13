@@ -3,6 +3,10 @@ package main
 import (
 	"context"
 	"log"
+	"math/rand"
+	"reflect"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/bunnier/heartfelt"
@@ -11,32 +15,50 @@ import (
 func main() {
 	// DynamicTimeoutHearthub is a heartbeat watcher of dynamic timeout service.
 	heartHub := heartfelt.NewDynamicTimeoutHearthub(
-		heartfelt.WithDegreeOfParallelismOption(2),
+		heartfelt.WithDegreeOfParallelismOption(1),
 	)
 	eventCh := heartHub.GetEventChannel() // Events will be sent to this channel later.
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15) // For exit this example.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
 	defer cancel()
 
+	serviceNum := 20 // The number of fake services.
+
+	// Make random timeout list.
+	rand := rand.New(rand.NewSource(time.Now().Unix()))
+	var timeoutList []int
+	for i := 0; i < serviceNum; i++ {
+		timeout := rand.Int()%400 + 100
+		timeoutList = append(timeoutList, timeout)
+	}
+
+	// Start fake services.
 	go func() {
-		// This fake service will make heartbeat in 500ms regularly.
-		// The timeout will be dynamically set by each heartbeat using {1000ms, 800ms 600ms, 400ms, 200ms}
-		// So the heartHub will catch it after the fourth heartbeat.
-		for i := 5; i > 0; i-- {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				// Send heartbeat..you can also set timeout by the second parameter.
-				timeout := time.Duration(i*200) * time.Millisecond
-				log.Default().Printf("heartbeat with %v\n", timeout)
-				heartHub.DisposableHeartbeatWithTimeout("fakeService", timeout)
-				time.Sleep(500 * time.Millisecond)
-			}
+		for index, timeout := range timeoutList {
+			key := strconv.Itoa(index)
+			timeout := timeout
+			go func() {
+				heartHub.DisposableHeartbeatWithTimeout(key, time.Duration(timeout)*time.Millisecond)
+			}()
 		}
 	}()
 
-	event := <-eventCh
-	log.Default().Printf("received an event: heartKey=%s eventName=%s, timeoutTime=%d, eventTime=%d, offset=%dms",
-		event.HeartKey, event.EventName, event.TimeoutTime.UnixMilli(), event.EventTime.UnixMilli(), event.EventTime.Sub(event.TimeoutTime)/time.Millisecond)
+	receivedTimeoutList := make([]int, 0, len(timeoutList))
+OVER:
+	for {
+		select {
+		case event := <-eventCh:
+			log.Default().Printf("received an event: eventName=%s, timeout duration=%d, timeoutTime=%d, eventTime=%d, offset=%dms",
+				event.EventName, event.Timeout/time.Millisecond, event.TimeoutTime.UnixMilli(), event.EventTime.UnixMilli(), event.EventTime.Sub(event.TimeoutTime)/time.Millisecond)
+			receivedTimeoutList = append(receivedTimeoutList, int(event.Timeout/time.Millisecond)) // Record receive timeout order.
+		case <-ctx.Done():
+			heartHub.Close()
+			break OVER
+		}
+	}
+
+	sort.IntSlice(timeoutList).Sort() // Received order must equal with sort result.
+	if reflect.DeepEqual(timeoutList, receivedTimeoutList) {
+		log.Default().Println("Exactly equal!")
+	}
 }

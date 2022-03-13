@@ -29,8 +29,8 @@ func main() {
 		select {
 		case event := <-eventCh:
 			// The special service checking will be stop after timeout or heartHub.Remove(key) be called manually.
-			log.Default().Printf("received an event: heartKey=%s eventName=%s, timeoutTime=%d, eventTime=%d, offset=%dms",
-				event.HeartKey, event.EventName, event.TimeoutTime.UnixMilli(), event.EventTime.UnixMilli(), event.EventTime.Sub(event.TimeoutTime)/time.Millisecond)
+			log.Default().Printf("received an event: heartKey=%s eventName=%s, timeout duration=%d, timeoutTime=%d, eventTime=%d, offset=%dms",
+				event.HeartKey, event.EventName, event.Timeout/time.Millisecond, event.TimeoutTime.UnixMilli(), event.EventTime.UnixMilli(), event.EventTime.Sub(event.TimeoutTime)/time.Millisecond)
 		case <-ctx.Done():
 			heartHub.Close()
 			return
@@ -39,6 +39,7 @@ func main() {
 }
 
 // startFakeServices will start fake services.
+// Each service will make heartbeat in 500ms regularly.
 func startFakeServices(ctx context.Context, heartHub heartfelt.HeartHub, serviceNum int, stuckIds []int) {
 	// These ids will stuck later.
 	stuckIdsMap := make(map[int]struct{})
