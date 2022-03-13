@@ -9,9 +9,13 @@ A high performance heartbeat watcher.
 
 ## Algorithm
 
-### 1. Fixed timeout watcher
+### 1. Fixed timeout watcher (LRU by Queue)
 
-![Algorithm](./docs/fixedtime_algorithm.png)
+![Algorithm](./docs/fixed_timeout_algorithm.png)
+
+### 2. Dynamic timeout watcher (LRU by priority queue)
+
+![Algorithm](./docs/dynamic_timeout_algorithm.png)
 
 ## Usage
 
