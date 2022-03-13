@@ -1,7 +1,9 @@
 package heartfelt
 
 import (
+	"math/rand"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -196,67 +198,74 @@ func Test_beatsUniquePriorityQueue_remove(t *testing.T) {
 	}
 }
 
-func Test_heap_peek(t *testing.T) {
-	nodeSlice := []*beat{
-		{key: "2", timeoutTime: time.Now().Add(2 * time.Second)},
-		{key: "1", timeoutTime: time.Now().Add(1 * time.Second)},
-		{key: "4", timeoutTime: time.Now().Add(4 * time.Second)},
-		{key: "5", timeoutTime: time.Now().Add(5 * time.Second)},
-		{key: "3", timeoutTime: time.Now().Add(3 * time.Second)},
-	}
-
+func Test_heap(t *testing.T) {
 	h := heap{make([]*beat, 0)}
-	h.push(nodeSlice[0])
-	h.push(nodeSlice[1])
-	h.push(nodeSlice[2])
-	h.push(nodeSlice[3])
-	h.push(nodeSlice[4])
-
-	// check length
-	if len(h.items) != 5 {
-		t.Errorf("heap.push() length %v, want 3", len(h.items))
-	}
-	checkHeapOrder(t, &h)
-
-	// duplicate
-	h.push(nodeSlice[0])
-	h.push(nodeSlice[1])
-	h.push(nodeSlice[2])
-	h.push(nodeSlice[3])
-	h.push(nodeSlice[4])
-	h.push(nodeSlice[0])
-	h.push(nodeSlice[1])
-	if len(h.items) != 7 {
-		t.Errorf("heap.push() length %v, want 7", len(h.items))
-	}
-	checkHeapOrder(t, &h)
-
-	// single
-	h.push(nodeSlice[0])
-	if len(h.items) != 1 {
-		t.Errorf("heap.push() length %v, want 1", len(h.items))
-	}
-	checkHeapOrder(t, &h)
 
 	// empty
 	if len(h.items) != 0 {
 		t.Errorf("heap.push() length %v, want 0", len(h.items))
 	}
 
-	if b := h.pop(); b != nil {
-		t.Errorf("heap.pop() got %v, want nil", b)
+	if bPop := h.pop(); bPop != nil {
+		t.Errorf("heap.pop() got %v, want nil", bPop)
 	}
+
+	// single
+	b := &beat{key: "1", timeoutTime: time.Now().Add(1 * time.Second)}
+	h.push(b)
+	if len(h.items) != 1 {
+		t.Errorf("heap.push() length %v, want 1", len(h.items))
+	}
+
+	if bPop := h.pop(); b != bPop {
+		t.Errorf("heap.pop() got %v, want %v", bPop, b)
+	}
+
+	nodeSlice := []*beat{
+		{key: "2", timeoutTime: time.Now().Add(2 * time.Second)},
+		{key: "1", timeoutTime: time.Now().Add(1 * time.Second)},
+		{key: "4", timeoutTime: time.Now().Add(4 * time.Second)},
+		{key: "5", timeoutTime: time.Now().Add(5 * time.Second)},
+		{key: "3", timeoutTime: time.Now().Add(3 * time.Second)},
+		{key: "7", timeoutTime: time.Now().Add(7 * time.Second)},
+		{key: "6", timeoutTime: time.Now().Add(6 * time.Second)},
+	}
+
+	for _, node := range nodeSlice {
+		h.push(node)
+	}
+
+	checkHeapOrderByPop(t, &h)
+
+	// randon test
+	loop := 1000
+	for i := 0; i < loop; i++ {
+		rand := rand.New(rand.NewSource(time.Now().Unix()))
+		timeout := rand.Int()
+		h.push(&beat{key: strconv.Itoa(timeout), timeoutTime: time.Now().Add(time.Duration(timeout) * time.Second)})
+	}
+
+	if len(h.items) != loop {
+		t.Errorf("heap.push() length %v, want %v", len(h.items), len(nodeSlice))
+	}
+
+	checkHeapOrderByPop(t, &h)
 }
 
-func checkHeapOrder(t *testing.T, h *heap) {
-	ti := time.Time{}
-	len := len(h.items)
-	for i := 0; i < len; i++ {
-		currentTi := h.pop().timeoutTime
-		if ti.After(currentTi) {
+func checkHeapOrderByPop(t *testing.T, h *heap) {
+	before := time.Time{}
+	loop := len(h.items)
+	for i := 0; i < loop; i++ {
+		current := h.pop().timeoutTime
+		if before.After(current) {
 			t.Errorf("heap.pop() order is wrong, %v", h.items)
 			break
 		}
-		ti = currentTi
+		before = current
+	}
+
+	// empty
+	if len(h.items) != 0 {
+		t.Errorf("heap.push() length %v, want 0", len(h.items))
 	}
 }

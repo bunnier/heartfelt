@@ -82,7 +82,7 @@ func (h *heap) push(b *beat) int {
 
 	for {
 		var parentIndex int
-		if parentIndex := (index - 1) / 2; parentIndex < 0 || parentIndex == index {
+		if parentIndex = (index - 1) / 2; parentIndex < 0 || parentIndex == index {
 			break
 		}
 
