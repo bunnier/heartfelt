@@ -2,6 +2,7 @@ package heartfelt
 
 import (
 	"reflect"
+	"sync"
 	"testing"
 )
 
@@ -38,10 +39,11 @@ func Test_beatsUniqueQueue_isEmpty(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			queue := &beatsUniqueQueue{
-				lastBeatsMap: tt.fields.lastBeatsMap,
-				link:         tt.fields.link,
-			}
+			queue := newBeatsUniqueQueueForTest(
+				tt.fields.lastBeatsMap,
+				tt.fields.link,
+			)
+
 			if got := queue.isEmpty(); got != tt.want {
 				t.Errorf("beatsUniqueQueue.isEmpty() = %v, want %v", got, tt.want)
 			}
@@ -84,10 +86,11 @@ func Test_beatsUniqueQueue_peek(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			queue := &beatsUniqueQueue{
-				lastBeatsMap: tt.fields.lastBeatsMap,
-				link:         tt.fields.link,
-			}
+			queue := newBeatsUniqueQueueForTest(
+				tt.fields.lastBeatsMap,
+				tt.fields.link,
+			)
+
 			if got := queue.peek(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("beatsUniqueQueue.peek() = %v, want %v", got, tt.want)
 			}
@@ -130,10 +133,11 @@ func Test_beatsUniqueQueue_pop(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			queue := &beatsUniqueQueue{
-				lastBeatsMap: tt.fields.lastBeatsMap,
-				link:         tt.fields.link,
-			}
+			queue := newBeatsUniqueQueueForTest(
+				tt.fields.lastBeatsMap,
+				tt.fields.link,
+			)
+
 			if got := queue.pop(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("beatsUniqueQueue.pop() = %v, want %v", got, tt.want)
 			}
@@ -198,10 +202,10 @@ func Test_beatsUniqueQueue_push(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			queue := &beatsUniqueQueue{
-				lastBeatsMap: tt.fields.lastBeatsMap,
-				link:         tt.fields.link,
-			}
+			queue := newBeatsUniqueQueueForTest(
+				tt.fields.lastBeatsMap,
+				tt.fields.link,
+			)
 
 			if got := queue.push(tt.args.b); got != nil && got.key != tt.args.b.key {
 				t.Errorf("beatsUniqueQueue.push() return = %v, want %v", got.key, tt.args.b.key)
@@ -265,10 +269,11 @@ func Test_beatsUniqueQueue_remove(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			queue := &beatsUniqueQueue{
-				lastBeatsMap: tt.fields.lastBeatsMap,
-				link:         tt.fields.link,
-			}
+			queue := newBeatsUniqueQueueForTest(
+				tt.fields.lastBeatsMap,
+				tt.fields.link,
+			)
+
 			if got := queue.remove(tt.args.key); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("beatsUniqueQueue.remove() = %v, want %v", got, tt.want)
 			}
@@ -354,5 +359,17 @@ func Test_doublyLink(t *testing.T) {
 	beatsLink.pop()
 	if beatsLink.head != nil || beatsLink.tail != nil {
 		t.Errorf("doublyLink.push() head %v, tail %v, want %v", beatsLink.head.data.key, beatsLink.tail.data.key, nodeSlice[4].data.key)
+	}
+}
+
+func newBeatsUniqueQueueForTest(lastBeatsMap map[string]*linkNode, link doublyLink) *beatsUniqueQueue {
+	return &beatsUniqueQueue{
+		lastBeatsMap: lastBeatsMap,
+		link:         link,
+		nodePool: sync.Pool{
+			New: func() interface{} {
+				return &linkNode{}
+			},
+		},
 	}
 }

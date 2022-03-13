@@ -1,17 +1,25 @@
 package heartfelt
 
+import "sync"
+
 var _ beatsRepository = (*beatsUniqueQueue)(nil)
 
 // beatsUniqueQueue maintenance a beats unique queue for fixed timeout heartbeat.
 type beatsUniqueQueue struct {
 	lastBeatsMap map[string]*linkNode // lastBeatsMap is a map: key => beat.key, value => beat node of link.
 	link         doublyLink           // link is a heartbeat unique queue
+	nodePool     sync.Pool
 }
 
 func newBeatsUniqueQueue() beatsRepository {
 	return &beatsUniqueQueue{
 		lastBeatsMap: make(map[string]*linkNode),
 		link:         doublyLink{},
+		nodePool: sync.Pool{
+			New: func() interface{} {
+				return &linkNode{}
+			},
+		},
 	}
 }
 
@@ -31,8 +39,10 @@ func (queue *beatsUniqueQueue) pop() *beat {
 		return nil
 	}
 
-	b := queue.link.pop().data
+	n := queue.link.pop()
+	b := n.data
 	delete(queue.lastBeatsMap, b.key)
+	queue.nodePool.Put(n) // Reuse the *linkNode.
 	return b
 }
 
@@ -48,7 +58,8 @@ func (queue *beatsUniqueQueue) push(b *beat) *beat {
 			node.data = b
 		}
 	} else {
-		node = &linkNode{b, nil, nil}
+		node = queue.nodePool.Get().(*linkNode) // Reuse the *linkNode.
+		node.data = b
 		queue.lastBeatsMap[b.key] = node
 	}
 
@@ -60,7 +71,10 @@ func (queue *beatsUniqueQueue) remove(key string) *beat {
 	if n, ok := queue.lastBeatsMap[key]; ok {
 		delete(queue.lastBeatsMap, key) // Remove the heart from the hearts map.
 		queue.link.remove(n)            // Remove relative beat from beatlink.
-		return n.data
+
+		d := n.data
+		queue.nodePool.Put(n) // Reuse the *linkNode.
+		return d
 	}
 	return nil
 }
