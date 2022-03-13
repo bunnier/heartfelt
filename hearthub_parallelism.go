@@ -54,6 +54,8 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 
 			parallelism.cond.L.Lock()
 
+			firstBeat := parallelism.beatsRepo.peek() // Save first heartbeat for comparision later.
+
 			now := time.Now()
 			if signal.end {
 				// It is a remove signal.
@@ -78,8 +80,9 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 
 			parallelism.cond.L.Unlock()
 
-			if !signal.end {
-				parallelism.cond.Signal() // Notify timeout checking goroutine.
+			// When first heartbeat been changed, notify timeout checking goroutine.
+			if parallelism.beatsRepo.peek() != firstBeat {
+				parallelism.cond.Signal()
 			}
 		}
 	}()
