@@ -1,57 +1,14 @@
 package heartfelt
 
 import (
+	"context"
+	"math/rand"
 	"reflect"
+	"sort"
+	"strconv"
 	"testing"
 	"time"
 )
-
-func Test_heartbeats(t *testing.T) {
-	heartHub := NewFixedTimeoutHeartHub(
-		time.Millisecond*10,
-		WithDegreeOfParallelismOption(1),
-	).(*abstractHeartHub)
-
-	defer heartHub.Close()
-
-	heartHub.DisposableHeartbeat("service1")
-	heartHub.DisposableHeartbeat("service2")
-	heartHub.Heartbeat("service3")
-
-	time.Sleep(time.Millisecond * 2) // Waiting for inner goroutine done.
-
-	heartHub.parallelisms[0].cond.L.Lock()
-
-	// Check heartbeats number.
-	beatsCount := 0
-	tmpBeat := heartHub.parallelisms[0].beatsRepo.(*beatsUniqueQueue).link.head
-	for tmpBeat != nil {
-		tmpBeat = tmpBeat.next
-		beatsCount++
-	}
-
-	if beatsCount != 3 {
-		t.Errorf("hearthub heartbeats beats num error, want 3 get %v", beatsCount)
-	}
-
-	// Check disposable.
-	if heartHub.parallelisms[0].beatsRepo.(*beatsUniqueQueue).link.tail.data.disposable {
-		t.Errorf("hearthub heartbeats disposable error, want true get false")
-	}
-
-	heartHub.parallelisms[0].cond.L.Unlock()
-
-	time.Sleep(time.Millisecond * 11) // Waiting for timeout.
-
-	// Check disposable result.
-	if len(heartHub.parallelisms[0].beatsRepo.(*beatsUniqueQueue).lastBeatsMap) != 1 {
-		t.Errorf("hearthub heartbeats disposable error, want 1 get %v", len(heartHub.parallelisms[0].beatsRepo.(*beatsUniqueQueue).lastBeatsMap))
-	}
-
-	if _, ok := heartHub.parallelisms[0].beatsRepo.(*beatsUniqueQueue).lastBeatsMap["service3"]; !ok {
-		t.Errorf("hearthub heartbeats disposable error, service3 is not existed")
-	}
-}
 
 func Test_fixedTimeoutWorkflow(t *testing.T) {
 	heartHub := NewFixedTimeoutHeartHub(
@@ -103,9 +60,70 @@ func Test_fixedTimeoutWorkflow(t *testing.T) {
 	}
 }
 
+func Test_fixedTimeoutParallelWorkflow(t *testing.T) {
+	heartHub := NewFixedTimeoutHeartHub(
+		time.Millisecond*200,
+		WithDegreeOfParallelismOption(4),
+	)
+	eventCh := heartHub.GetEventChannel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
+	defer cancel()
+
+	want := []int{67, 100, 123, 456, 789}
+	get := make([]int, 0, len(want))
+	go startFakeServices(ctx, heartHub, 2000, want)
+
+OVER:
+	for {
+		select {
+		case event := <-eventCh:
+			id, _ := strconv.Atoi(event.HeartKey)
+			get = append(get, id)
+		case <-ctx.Done():
+			heartHub.Close()
+			break OVER
+		}
+	}
+
+	sort.IntSlice(get).Sort()
+	if !reflect.DeepEqual(want, get) {
+		t.Errorf("hearthub workflow want %v get %v", want, get)
+	}
+}
+
+// startFakeServices will start fake services.
+func startFakeServices(ctx context.Context, heartHub HeartHub, serviceNum int, stuckIds []int) {
+	// These ids will stuck later.
+	stuckIdsMap := make(map[int]struct{})
+	for _, v := range stuckIds {
+		stuckIdsMap[v] = struct{}{}
+	}
+
+	for i := 1; i <= serviceNum; i++ {
+		ctx := ctx
+		if _, ok := stuckIdsMap[i]; ok {
+			ctx, _ = context.WithTimeout(ctx, time.Duration(i)*time.Millisecond)
+		}
+
+		key := strconv.Itoa(i) // convert index to the service key
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					heartHub.DisposableHeartbeat(key)
+					time.Sleep(100 * time.Millisecond)
+				}
+			}
+		}()
+	}
+}
+
 func Test_dynamicTimeoutWorkflow(t *testing.T) {
 	heartHub := NewDynamicTimeoutHearthub(
-		WithDegreeOfParallelismOption(1),
+		WithDegreeOfParallelismOption(4),
 	)
 	defer heartHub.Close()
 	eventCh := heartHub.GetEventChannel()
@@ -158,6 +176,56 @@ func Test_dynamicTimeoutWorkflow(t *testing.T) {
 	case event := <-eventCh:
 		t.Errorf("hearthub timeout checking error, should be empty but get %v", event.EventName)
 	default:
+	}
+}
+
+func Test_dynamicTimeoutParallelWorkflow(t *testing.T) {
+	heartHub := NewDynamicTimeoutHearthub(
+		WithDegreeOfParallelismOption(1),
+	)
+	eventCh := heartHub.GetEventChannel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
+	defer cancel()
+
+	serviceNum := 50
+	rand := rand.New(rand.NewSource(time.Now().Unix()))
+	var timeoutList []int
+	for i := 0; i < serviceNum; i++ {
+		timeoutRand := rand.Int()%400 + 100 // Random timeout in {100-400}ms.
+		timeoutList = append(timeoutList, timeoutRand)
+	}
+
+	go func() {
+		for index, timeout := range timeoutList {
+			key := strconv.Itoa(index)
+			timeout := timeout
+			go func() {
+				heartHub.DisposableHeartbeatWithTimeout(key, time.Duration(timeout)*time.Millisecond)
+			}()
+		}
+	}()
+
+	get := make([]int, 0, len(timeoutList))
+OVER:
+	for {
+		select {
+		case event := <-eventCh:
+			id, _ := strconv.Atoi(strconv.Itoa(int(event.Timeout / time.Millisecond)))
+			get = append(get, id)
+		case <-ctx.Done():
+			heartHub.Close()
+			break OVER
+		}
+	}
+
+	if len(get) != len(timeoutList) {
+		t.Errorf("hearthub workflow miss timeout want %v get %v", len(timeoutList), len(get))
+	}
+
+	sort.IntSlice(timeoutList).Sort()
+	if !reflect.DeepEqual(timeoutList, get) {
+		t.Errorf("hearthub workflow want %v get %v", timeoutList, get)
 	}
 }
 
