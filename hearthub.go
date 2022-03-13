@@ -11,6 +11,9 @@ var ErrHubClosed error = errors.New("heartbeat: this HeartHub has been closed")
 // ErrDynamicNotSupported will be return from heartbeatWithTimeout method when the HeartHub do not support dynamic timeout.
 var ErrDynamicNotSupported error = errors.New("heartbeat: this HeartHub has been closed")
 
+// ErrNoDefaultTimeout will be return from heartbeat method when the default timeout do not be set.
+var ErrNoDefaultTimeout error = errors.New("heartbeat: this HeartHub has been closed")
+
 // HeartHub is the api entrance of this package.
 type HeartHub interface {
 	// GetEventChannel return a channel for receiving subscribed events.

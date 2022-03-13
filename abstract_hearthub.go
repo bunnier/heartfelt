@@ -121,6 +121,10 @@ func (hub *abstractHeartHub) getParallelism(key string) *heartHubParallelism {
 // This method will auto re-watch the key from heartHub after timeout.
 //   @key: the unique key of target service.
 func (hub *abstractHeartHub) Heartbeat(key string) error {
+	if hub.defaultTimeout == 0 {
+		return ErrNoDefaultTimeout
+	}
+
 	select {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
@@ -134,6 +138,10 @@ func (hub *abstractHeartHub) Heartbeat(key string) error {
 // This method will auto remove the key from heartHub after timeout.
 //   @key: the unique key of target service.
 func (hub *abstractHeartHub) DisposableHeartbeat(key string) error {
+	if hub.defaultTimeout == 0 {
+		return ErrNoDefaultTimeout
+	}
+
 	select {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
