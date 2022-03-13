@@ -1,10 +1,7 @@
 package heartfelt
 
 import (
-	"context"
 	"reflect"
-	"sort"
-	"strconv"
 	"testing"
 	"time"
 )
@@ -56,7 +53,7 @@ func Test_heartbeats(t *testing.T) {
 	}
 }
 
-func Test_timeoutCheck(t *testing.T) {
+func Test_fixedTimeoutWorkflow(t *testing.T) {
 	heartHub := NewFixedTimeoutHeartHub(
 		time.Millisecond*10,
 		WithDegreeOfParallelismOption(1),
@@ -106,64 +103,61 @@ func Test_timeoutCheck(t *testing.T) {
 	}
 }
 
-func Test_workflow(t *testing.T) {
-	heartHub := NewFixedTimeoutHeartHub(
-		time.Millisecond*200,
-		WithDegreeOfParallelismOption(2),
+func Test_dynamicTimeoutWorkflow(t *testing.T) {
+	heartHub := NewDynamicTimeoutHearthub(
+		WithDegreeOfParallelismOption(1),
 	)
+	defer heartHub.Close()
 	eventCh := heartHub.GetEventChannel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1) // exit context
-	defer cancel()
+	heartHub.DisposableHeartbeatWithTimeout("service1", time.Millisecond*10)
+	time.Sleep(time.Millisecond * 12) // Waiting for timeout.
 
-	want := []int{67, 100, 123, 456, 789}
-	get := make([]int, 0, len(want))
-	go startFakeServices(ctx, heartHub, 2000, want)
+	select {
+	case event := <-eventCh:
+		if event.HeartKey != "service1" || !event.Disposable || event.EventName != EventTimeout {
+			t.Errorf("hearthub timeout checking error event1")
+		}
+	default:
+		t.Errorf("hearthub timeout checking error event1, should have an event")
+	}
 
-OVER:
-	for {
+	time.Sleep(time.Millisecond * 12) // Waiting for timeout.
+	select {
+	case event := <-eventCh:
+		t.Errorf("hearthub timeout checking error, should be empty but get %v", event.EventName)
+	default:
+	}
+
+	heartHub.DisposableHeartbeatWithTimeout("service1", time.Millisecond*15)
+	heartHub.DisposableHeartbeatWithTimeout("service2", time.Millisecond*12)
+	heartHub.DisposableHeartbeatWithTimeout("service3", time.Millisecond*200)
+	heartHub.DisposableHeartbeatWithTimeout("service4", time.Millisecond*1)
+	wantTimeoutService := []string{"service4", "service2", "service1", "service3"}
+	time.Sleep(time.Millisecond * 210) // Waiting for timeout.
+	var gotTimeoutServices []string
+	for i := 0; i < len(wantTimeoutService); i++ {
 		select {
 		case event := <-eventCh:
-			id, _ := strconv.Atoi(event.HeartKey)
-			get = append(get, id)
-		case <-ctx.Done():
-			heartHub.Close()
-			break OVER
+			gotTimeoutServices = append(gotTimeoutServices, event.HeartKey)
+		default:
+			t.Errorf("hearthub timeout checking error event1, should have an event")
 		}
 	}
 
-	sort.IntSlice(get).Sort()
-	if !reflect.DeepEqual(want, get) {
-		t.Errorf("hearthub workflow want %v get %v", want, get)
-	}
-}
-
-// startFakeServices will start fake services.
-func startFakeServices(ctx context.Context, heartHub HeartHub, serviceNum int, stuckIds []int) {
-	// These ids will stuck later.
-	stuckIdsMap := make(map[int]struct{})
-	for _, v := range stuckIds {
-		stuckIdsMap[v] = struct{}{}
+	if !reflect.DeepEqual(wantTimeoutService, gotTimeoutServices) {
+		t.Errorf("hearthub workflow order checking failed want %v got %v", wantTimeoutService, gotTimeoutServices)
 	}
 
-	for i := 1; i <= serviceNum; i++ {
-		ctx := ctx
-		if _, ok := stuckIdsMap[i]; ok {
-			ctx, _ = context.WithTimeout(ctx, time.Duration(i)*time.Millisecond)
-		}
-
-		key := strconv.Itoa(i) // convert index to the service key
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					heartHub.DisposableHeartbeat(key)
-					time.Sleep(100 * time.Millisecond)
-				}
-			}
-		}()
+	heartHub.HeartbeatWithTimeout("service1", time.Millisecond*15)
+	heartHub.HeartbeatWithTimeout("service2", time.Millisecond*12)
+	heartHub.Remove("service1")
+	heartHub.Remove("service2")
+	time.Sleep(time.Millisecond * 16) // Waiting for timeout.
+	select {
+	case event := <-eventCh:
+		t.Errorf("hearthub timeout checking error, should be empty but get %v", event.EventName)
+	default:
 	}
 }
 

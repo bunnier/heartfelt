@@ -35,6 +35,8 @@ func (queue *beatsUniquePriorityQueue) push(b *beat) *beat {
 		oldBeat := queue.minHeap.remove(oldIndex)
 		if b != oldBeat {
 			b.firstTime = oldBeat.firstTime
+		} else {
+			oldBeat = nil
 		}
 	}
 

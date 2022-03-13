@@ -156,7 +156,7 @@ func (hub *abstractHeartHub) HeartbeatWithTimeout(key string, timeout time.Durat
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		hub.getParallelism(key).heartbeat(key, false, true, timeout)
+		hub.getParallelism(key).heartbeat(key, false, false, timeout)
 		return nil
 	}
 }
