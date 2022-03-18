@@ -71,6 +71,7 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 				// So it is a beat signal.
 				oldBeat := parallelism.beatsRepo.push(beat) // push this new beat
 				if oldBeat != nil {
+					oldBeat.extra = nil
 					beatsPool.Put(oldBeat)
 				}
 
@@ -148,7 +149,8 @@ func (parallelism *heartHubParallelism) startTimeoutCheck() {
 				parallelism.beatsRepo.pop() // Pop the timeout heartbeat.
 				if firstBeat.disposable {
 					parallelism.beatsRepo.remove(firstBeat.key) //  Remove the heart from the repository.
-					beatsPool.Put(firstBeat)                    // Clean the beat and then put it back to heartbeat pool.
+					firstBeat.extra = nil
+					beatsPool.Put(firstBeat) // Clean the beat and then put it back to heartbeat pool.
 				} else {
 					// Put it to the beatlist directly instead of beatChSignal, otherwise might have deadlock.
 					// Reuse firstBeat here.
