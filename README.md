@@ -102,7 +102,7 @@ func startFakeServices(ctx context.Context, heartHub heartfelt.HeartHub, service
 					return
 				default:
 					// Send heartbeat..
-					heartHub.DisposableHeartbeat(key)
+					heartHub.DisposableHeartbeat(key, nil)
 					time.Sleep(500 * time.Millisecond)
 				}
 			}
@@ -167,7 +167,7 @@ func main() {
 			key := strconv.Itoa(index)
 			timeout := timeout
 			go func() {
-				heartHub.DisposableHeartbeatWithTimeout(key, time.Duration(timeout)*time.Millisecond)
+				heartHub.DisposableHeartbeatWithTimeout(key, time.Duration(timeout)*time.Millisecond, nil)
 			}()
 		}
 	}()
