@@ -50,15 +50,9 @@ type beat struct {
 	timeout     time.Duration // timeout duration
 	timeoutTime time.Time     // beaten time
 	firstTime   time.Time     // first beaten time
-	disposable  bool          // set to true for auto removing the key from heartHub after timeout.
-}
-
-// beatChSignal is a signal will be pass to heartbeat handling goroutine by beatSignalCh.
-type beatChSignal struct {
-	key        string // target key
-	end        bool   // set to true to remove the key from heartHub.
-	disposable bool   // set to true for auto removing the key from heartHub after timeout.
-	timeout    time.Duration
+	end         bool          // Set to true for removing the key from heartHub.
+	disposable  bool          // Set to true for auto removing the key from heartHub after timeout.
+	extra       interface{}   // The extra data you pass by calling heartbeat method, it will be carried back by event data.
 }
 
 // beatsPool for reuse beats.
@@ -119,8 +113,9 @@ func (hub *abstractHeartHub) getParallelism(key string) *heartHubParallelism {
 
 // Heartbeat will beat the heart of specified key.
 // This method will auto re-watch the key from heartHub after timeout.
-//   @key: the unique key of target service.
-func (hub *abstractHeartHub) Heartbeat(key string) error {
+//   @key: The unique key of target service.
+//   @extra: It will be carried back by event data.
+func (hub *abstractHeartHub) Heartbeat(key string, extra interface{}) error {
 	if hub.defaultTimeout == 0 {
 		return ErrNoDefaultTimeout
 	}
@@ -129,15 +124,16 @@ func (hub *abstractHeartHub) Heartbeat(key string) error {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		hub.getParallelism(key).heartbeat(key, false, false, hub.defaultTimeout)
+		hub.getParallelism(key).heartbeat(key, false, false, hub.defaultTimeout, extra)
 		return nil
 	}
 }
 
-// DisposableHeartbeat will beat the heart of specified key.
+// Heartbeat will beat the heart of specified key.
 // This method will auto remove the key from heartHub after timeout.
-//   @key: the unique key of target service.
-func (hub *abstractHeartHub) DisposableHeartbeat(key string) error {
+//   @key: The unique key of target service.
+//   @extra: It will be carried back by event data.
+func (hub *abstractHeartHub) DisposableHeartbeat(key string, extra interface{}) error {
 	if hub.defaultTimeout == 0 {
 		return ErrNoDefaultTimeout
 	}
@@ -146,16 +142,17 @@ func (hub *abstractHeartHub) DisposableHeartbeat(key string) error {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		hub.getParallelism(key).heartbeat(key, false, true, hub.defaultTimeout)
+		hub.getParallelism(key).heartbeat(key, false, true, hub.defaultTimeout, extra)
 		return nil
 	}
 }
 
-// HeartbeatWithTimeout will beat the heart of specified key.
+// Heartbeat will beat the heart of specified key.
 // This method will auto re-watch the key from heartHub after timeout.
-//   @key: the unique key of target service.
-//   @timeout: the timeout duration after this heartbeat.
-func (hub *abstractHeartHub) HeartbeatWithTimeout(key string, timeout time.Duration) error {
+//   @key: The unique key of target service.
+//   @timeout: The timeout duration after this heartbeat.
+//   @extra: It will be carried back by event data.
+func (hub *abstractHeartHub) HeartbeatWithTimeout(key string, timeout time.Duration, extra interface{}) error {
 	if !hub.supportDynamicTimeout {
 		return ErrDynamicNotSupported
 	}
@@ -164,15 +161,17 @@ func (hub *abstractHeartHub) HeartbeatWithTimeout(key string, timeout time.Durat
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		hub.getParallelism(key).heartbeat(key, false, false, timeout)
+		hub.getParallelism(key).heartbeat(key, false, false, timeout, extra)
 		return nil
 	}
 }
 
-// DisposableHeartbeatWithTimeout will beat the heart of specified key.
+// Heartbeat will beat the heart of specified key.
 // This method will auto remove the key from heartHub after timeout.
-//   @timeout: the timeout duration after this heartbeat.
-func (hub *abstractHeartHub) DisposableHeartbeatWithTimeout(key string, timeout time.Duration) error {
+//   @key: The unique key of target service.
+//   @timeout: The timeout duration after this heartbeat.
+//   @extra: It will be carried back by event data.
+func (hub *abstractHeartHub) DisposableHeartbeatWithTimeout(key string, timeout time.Duration, extra interface{}) error {
 	if !hub.supportDynamicTimeout {
 		return ErrDynamicNotSupported
 	}
@@ -181,7 +180,7 @@ func (hub *abstractHeartHub) DisposableHeartbeatWithTimeout(key string, timeout 
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		hub.getParallelism(key).heartbeat(key, false, true, timeout)
+		hub.getParallelism(key).heartbeat(key, false, true, timeout, extra)
 		return nil
 	}
 }
@@ -195,7 +194,7 @@ func (hub *abstractHeartHub) Remove(key string) error {
 	case <-hub.ctx.Done():
 		return ErrHubClosed
 	default:
-		parallelism.heartbeat(key, true, true, 0)
+		parallelism.heartbeat(key, true, true, 0, nil)
 		return nil
 	}
 }
@@ -233,6 +232,7 @@ type Event struct {
 	Timeout     time.Duration `json:"timeout"`    // Timeout duration.
 	TimeoutTime time.Time     `json:"beat_time"`
 	Disposable  bool          `json:"disposable"`
+	Extra       interface{}   // Extra is the extra data you pass by calling heartbeat method.
 }
 
 func (hub *abstractHeartHub) sendEvent(eventName string, beat *beat, eventTime time.Time) bool {
@@ -248,6 +248,7 @@ func (hub *abstractHeartHub) sendEvent(eventName string, beat *beat, eventTime t
 		Timeout:     beat.timeout,
 		TimeoutTime: beat.timeoutTime,
 		Disposable:  beat.disposable,
+		Extra:       beat.extra,
 	}
 
 	select {

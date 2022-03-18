@@ -21,16 +21,18 @@ type HeartHub interface {
 
 	// Heartbeat will beat the heart of specified key.
 	// This method will auto re-watch the key from heartHub after timeout.
-	//   @key: the unique key of target service.
-	Heartbeat(key string) error
+	//   @key: The unique key of target service.
+	//   @extra: It will be carried back by event data.
+	Heartbeat(key string, extra interface{}) error
 
 	// Heartbeat will beat the heart of specified key.
 	// This method will auto remove the key from heartHub after timeout.
-	//   @key: the unique key of target service.
-	DisposableHeartbeat(key string) error
+	//   @key: The unique key of target service.
+	//   @extra: It will be carried back by event data.
+	DisposableHeartbeat(key string, extra interface{}) error
 
 	// Remove will stop watching the service of key from the heartHub.
-	//   @key: the unique key of target service.
+	//   @key: The unique key of target service.
 	Remove(key string) error
 
 	// Close will stop watch all service keys and release all goroutines.
@@ -62,13 +64,15 @@ type DynamicTimeoutHeartHub interface {
 
 	// Heartbeat will beat the heart of specified key.
 	// This method will auto re-watch the key from heartHub after timeout.
-	//   @key: the unique key of target service.
-	//   @timeout: the timeout duration after this heartbeat.
-	HeartbeatWithTimeout(key string, timeout time.Duration) error
+	//   @key: The unique key of target service.
+	//   @timeout: The timeout duration after this heartbeat.
+	//   @extra: It will be carried back by event data.
+	HeartbeatWithTimeout(key string, timeout time.Duration, extra interface{}) error
 
 	// Heartbeat will beat the heart of specified key.
 	// This method will auto remove the key from heartHub after timeout.
-	//   @key: the unique key of target service.
-	//   @timeout: the timeout duration after this heartbeat.
-	DisposableHeartbeatWithTimeout(key string, timeout time.Duration) error
+	//   @key: The unique key of target service.
+	//   @timeout: The timeout duration after this heartbeat.
+	//   @extra: It will be carried back by event data.
+	DisposableHeartbeatWithTimeout(key string, timeout time.Duration, extra interface{}) error
 }

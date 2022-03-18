@@ -18,12 +18,13 @@ func Test_fixedTimeoutWorkflow(t *testing.T) {
 	defer heartHub.Close()
 	eventCh := heartHub.GetEventChannel()
 
-	heartHub.DisposableHeartbeat("service1")
+	heartHub.DisposableHeartbeat("service1", "extra data")
 	time.Sleep(time.Millisecond * 12) // Waiting for timeout.
 
 	select {
 	case event := <-eventCh:
-		if event.HeartKey != "service1" || !event.Disposable || event.EventName != EventTimeout {
+		if event.HeartKey != "service1" || !event.Disposable ||
+			event.EventName != EventTimeout || event.Extra.(string) != "extra data" {
 			t.Errorf("hearthub timeout checking error event1")
 		}
 	default:
@@ -37,7 +38,7 @@ func Test_fixedTimeoutWorkflow(t *testing.T) {
 	default:
 	}
 
-	heartHub.Heartbeat("service1")
+	heartHub.Heartbeat("service1", nil)
 	time.Sleep(time.Millisecond * 24) // Waiting for timeout.
 	for i := 0; i < 2; i++ {
 		select {
@@ -113,7 +114,7 @@ func startFakeServices(ctx context.Context, heartHub HeartHub, serviceNum int, s
 				case <-ctx.Done():
 					return
 				default:
-					heartHub.DisposableHeartbeat(key)
+					heartHub.DisposableHeartbeat(key, nil)
 					time.Sleep(100 * time.Millisecond)
 				}
 			}
@@ -128,12 +129,13 @@ func Test_dynamicTimeoutWorkflow(t *testing.T) {
 	defer heartHub.Close()
 	eventCh := heartHub.GetEventChannel()
 
-	heartHub.DisposableHeartbeatWithTimeout("service1", time.Millisecond*10)
+	heartHub.DisposableHeartbeatWithTimeout("service1", time.Millisecond*10, "extra data")
 	time.Sleep(time.Millisecond * 12) // Waiting for timeout.
 
 	select {
 	case event := <-eventCh:
-		if event.HeartKey != "service1" || !event.Disposable || event.EventName != EventTimeout {
+		if event.HeartKey != "service1" || !event.Disposable ||
+			event.EventName != EventTimeout || event.Extra.(string) != "extra data" {
 			t.Errorf("hearthub timeout checking error event1")
 		}
 	default:
@@ -147,10 +149,10 @@ func Test_dynamicTimeoutWorkflow(t *testing.T) {
 	default:
 	}
 
-	heartHub.DisposableHeartbeatWithTimeout("service1", time.Millisecond*15)
-	heartHub.DisposableHeartbeatWithTimeout("service2", time.Millisecond*12)
-	heartHub.DisposableHeartbeatWithTimeout("service3", time.Millisecond*200)
-	heartHub.DisposableHeartbeatWithTimeout("service4", time.Millisecond*1)
+	heartHub.DisposableHeartbeatWithTimeout("service1", time.Millisecond*15, nil)
+	heartHub.DisposableHeartbeatWithTimeout("service2", time.Millisecond*12, nil)
+	heartHub.DisposableHeartbeatWithTimeout("service3", time.Millisecond*200, nil)
+	heartHub.DisposableHeartbeatWithTimeout("service4", time.Millisecond*1, nil)
 	wantTimeoutService := []string{"service4", "service2", "service1", "service3"}
 	time.Sleep(time.Millisecond * 210) // Waiting for timeout.
 	var gotTimeoutServices []string
@@ -167,8 +169,8 @@ func Test_dynamicTimeoutWorkflow(t *testing.T) {
 		t.Errorf("hearthub workflow order checking failed want %v got %v", wantTimeoutService, gotTimeoutServices)
 	}
 
-	heartHub.HeartbeatWithTimeout("service1", time.Millisecond*15)
-	heartHub.HeartbeatWithTimeout("service2", time.Millisecond*12)
+	heartHub.HeartbeatWithTimeout("service1", time.Millisecond*15, nil)
+	heartHub.HeartbeatWithTimeout("service2", time.Millisecond*12, nil)
 	heartHub.Remove("service1")
 	heartHub.Remove("service2")
 	time.Sleep(time.Millisecond * 16) // Waiting for timeout.
@@ -201,7 +203,7 @@ func Test_dynamicTimeoutParallelWorkflow(t *testing.T) {
 			key := strconv.Itoa(index)
 			timeout := timeout
 			go func() {
-				heartHub.DisposableHeartbeatWithTimeout(key, time.Duration(timeout)*time.Millisecond)
+				heartHub.DisposableHeartbeatWithTimeout(key, time.Duration(timeout)*time.Millisecond, nil)
 			}()
 		}
 	}()

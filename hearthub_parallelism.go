@@ -15,41 +15,47 @@ type heartHubParallelism struct {
 
 	// When beatsLink is empty, cond will be used to waiting heartbeat.
 	// When modify beatsLink, cond.L will be used to doing mutual exclusion.
-	cond         *sync.Cond
-	beatSignalCh chan beatChSignal // for passing heartbeat signal to heartbeat handling goroutine.
+	cond   *sync.Cond
+	beatCh chan *beat // for passing heartbeat signal to heartbeat handling goroutine.
 }
 
 func newHeartHubParallelism(id int, hub *abstractHeartHub, beatsRepo beatsRepository) *heartHubParallelism {
 	return &heartHubParallelism{
-		id:           id,
-		heartHub:     hub,
-		beatsRepo:    beatsRepo,
-		cond:         sync.NewCond(&sync.Mutex{}),
-		beatSignalCh: make(chan beatChSignal, hub.beatChBufferSize),
+		id:        id,
+		heartHub:  hub,
+		beatsRepo: beatsRepo,
+		cond:      sync.NewCond(&sync.Mutex{}),
+		beatCh:    make(chan *beat, hub.beatChBufferSize),
 	}
 }
 
-func (parallelism *heartHubParallelism) heartbeat(key string, end bool, disposable bool, timeout time.Duration) {
-	parallelism.beatSignalCh <- beatChSignal{
-		key:        key,
-		end:        end,
-		disposable: disposable,
-		timeout:    timeout,
-	}
+func (parallelism *heartHubParallelism) heartbeat(key string, end bool, disposable bool, timeout time.Duration, extra interface{}) {
+	beat := beatsPool.Get().(*beat)
+
+	now := time.Now()
+	beat.key = key
+	beat.firstTime = now
+	beat.timeout = timeout
+	beat.timeoutTime = now.Add(timeout)
+	beat.end = end
+	beat.disposable = disposable
+	beat.extra = extra
+
+	parallelism.beatCh <- beat
 }
 
 // startHandleHeartbeat starts a goroutine to handle heartbeats.
 func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 	go func() {
 		for {
-			var signal beatChSignal
+			var beat *beat
 			select {
 			case <-parallelism.heartHub.ctx.Done():
 				if parallelism.heartHub.verboseInfo {
 					parallelism.heartHub.logger.Info("ctx has been done, exit heartbeat handling goroutine, parallelismId:", parallelism.id)
 				}
 				return
-			case signal = <-parallelism.beatSignalCh:
+			case beat = <-parallelism.beatCh:
 			}
 
 			parallelism.cond.L.Lock()
@@ -57,19 +63,12 @@ func (parallelism *heartHubParallelism) startHandleHeartbeat() {
 			firstBeat := parallelism.beatsRepo.peek() // Save first heartbeat for comparision later.
 
 			now := time.Now()
-			if signal.end {
+			if beat.end {
 				// It is a remove signal.
-				beat := parallelism.beatsRepo.remove(signal.key) // Remove the heart from the repository.
+				beat := parallelism.beatsRepo.remove(beat.key) // Remove the heart from the repository.
 				parallelism.heartHub.sendEvent(EventRemoveKey, beat, now)
 			} else {
 				// So it is a beat signal.
-				beat := beatsPool.Get().(*beat)
-				beat.key = signal.key
-				beat.firstTime = now
-				beat.timeout = signal.timeout
-				beat.timeoutTime = now.Add(beat.timeout)
-				beat.disposable = signal.disposable
-
 				oldBeat := parallelism.beatsRepo.push(beat) // push this new beat
 				if oldBeat != nil {
 					beatsPool.Put(oldBeat)

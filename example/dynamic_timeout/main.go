@@ -38,7 +38,7 @@ func main() {
 			key := strconv.Itoa(index)
 			timeout := timeout
 			go func() {
-				heartHub.DisposableHeartbeatWithTimeout(key, time.Duration(timeout)*time.Millisecond)
+				heartHub.DisposableHeartbeatWithTimeout(key, time.Duration(timeout)*time.Millisecond, nil)
 			}()
 		}
 	}()
