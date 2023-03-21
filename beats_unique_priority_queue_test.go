@@ -10,12 +10,6 @@ import (
 )
 
 func Test_beatsUniquePriorityQueue_isEmpty(t *testing.T) {
-	nodePool := sync.Pool{
-		New: func() interface{} {
-			return &heapNode{}
-		},
-	}
-
 	type fields struct {
 		lastBeatsMap map[string]*heapNode
 		minHeap      heap
@@ -47,7 +41,11 @@ func Test_beatsUniquePriorityQueue_isEmpty(t *testing.T) {
 			queue := &beatsUniquePriorityQueue{
 				lastBeatsMap: tt.fields.lastBeatsMap,
 				minHeap:      tt.fields.minHeap,
-				nodePool:     nodePool,
+				nodePool: sync.Pool{
+					New: func() interface{} {
+						return &heapNode{}
+					},
+				},
 			}
 			if got := queue.isEmpty(); got != tt.want {
 				t.Errorf("beatsUniquePriorityQueue.isEmpty() = %v, want %v", got, tt.want)
@@ -57,12 +55,6 @@ func Test_beatsUniquePriorityQueue_isEmpty(t *testing.T) {
 }
 
 func Test_beatsUniquePriorityQueue_peek(t *testing.T) {
-	nodePool := sync.Pool{
-		New: func() interface{} {
-			return &heapNode{}
-		},
-	}
-
 	type fields struct {
 		lastBeatsMap map[string]*heapNode
 		minHeap      heap
@@ -96,7 +88,11 @@ func Test_beatsUniquePriorityQueue_peek(t *testing.T) {
 			queue := &beatsUniquePriorityQueue{
 				lastBeatsMap: tt.fields.lastBeatsMap,
 				minHeap:      tt.fields.minHeap,
-				nodePool:     nodePool,
+				nodePool: sync.Pool{
+					New: func() interface{} {
+						return &heapNode{}
+					},
+				},
 			}
 			if got := queue.peek(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("beatsUniquePriorityQueue.peek() = %v, want %v", got, tt.want)
@@ -106,11 +102,6 @@ func Test_beatsUniquePriorityQueue_peek(t *testing.T) {
 }
 
 func Test_beatsUniquePriorityQueue_push(t *testing.T) {
-	nodePool := sync.Pool{
-		New: func() interface{} {
-			return &heapNode{}
-		},
-	}
 
 	type fields struct {
 		lastBeatsMap map[string]*heapNode
@@ -161,7 +152,11 @@ func Test_beatsUniquePriorityQueue_push(t *testing.T) {
 			queue := &beatsUniquePriorityQueue{
 				lastBeatsMap: tt.fields.lastBeatsMap,
 				minHeap:      tt.fields.minHeap,
-				nodePool:     nodePool,
+				nodePool: sync.Pool{
+					New: func() interface{} {
+						return &heapNode{}
+					},
+				},
 			}
 
 			if got := queue.push(tt.args.b); got != nil && got.key != tt.args.b.key {
@@ -179,12 +174,6 @@ func Test_beatsUniquePriorityQueue_push(t *testing.T) {
 }
 
 func Test_beatsUniquePriorityQueue_remove(t *testing.T) {
-	nodePool := sync.Pool{
-		New: func() interface{} {
-			return &heapNode{}
-		},
-	}
-
 	type fields struct {
 		lastBeatsMap map[string]*heapNode
 		minHeap      heap
@@ -237,7 +226,11 @@ func Test_beatsUniquePriorityQueue_remove(t *testing.T) {
 			queue := &beatsUniquePriorityQueue{
 				lastBeatsMap: tt.fields.lastBeatsMap,
 				minHeap:      tt.fields.minHeap,
-				nodePool:     nodePool,
+				nodePool: sync.Pool{
+					New: func() interface{} {
+						return &heapNode{}
+					},
+				},
 			}
 			if got := queue.remove(tt.args.key); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("beatsUniquePriorityQueue.remove() = %v, want %v", got, tt.want)
